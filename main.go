@@ -13,7 +13,7 @@ import (
 )
 
 func main() {
-	addr := ":9999"
+	addr := ":8080"
 	if p := os.Getenv("PORT"); p != "" {
 		if !strings.HasPrefix(p, ":") {
 			p = ":" + p
