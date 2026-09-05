@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pion/interceptor"
@@ -32,6 +33,9 @@ type Peer struct {
 	Role   PeerRole
 	PC     *webrtc.PeerConnection
 	Sender Sender
+
+	// resetting evita que Close intencional dispare remoção/stop em cascata.
+	resetting atomic.Bool
 }
 
 // Room is an SFU room: one publisher, many subscribers, shared local tracks.
@@ -40,12 +44,13 @@ type Room struct {
 	Name     string
 	Password string
 
-	mu         sync.RWMutex
+	mu          sync.RWMutex
 	negotiateMu sync.Mutex
-	publisher  *Peer
+	publisher   *Peer
 	subscribers map[string]*Peer
-	tracks     map[string]*webrtc.TrackLocalStaticRTP // keyed by track kind (audio/video) + id
-	closed     bool
+	tracks      map[string]*webrtc.TrackLocalStaticRTP // keyed by track kind (audio/video) + id
+	closed      bool
+	onChange    func()
 }
 
 // NewRoom constructs an empty room.
@@ -56,6 +61,24 @@ func NewRoom(id, name, password string) *Room {
 		Password:    password,
 		subscribers: make(map[string]*Peer),
 		tracks:      make(map[string]*webrtc.TrackLocalStaticRTP),
+	}
+}
+
+func (r *Room) notifyChange() {
+	if r.onChange != nil {
+		r.onChange()
+	}
+}
+
+// PublicSnapshot builds a hub card for this room (caller must ensure it is public).
+func (r *Room) PublicSnapshot() PublicRoom {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return PublicRoom{
+		RoomID:  r.ID,
+		Name:    r.Name,
+		Live:    len(r.tracks) > 0,
+		Viewers: len(r.subscribers),
 	}
 }
 
@@ -150,13 +173,12 @@ func (r *Room) AddPublisher(peerID string, sender Sender) (*Peer, error) {
 
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		log.Printf("publisher pc state room=%s peer=%s state=%s", r.ID, peerID, state.String())
-		if state == webrtc.PeerConnectionStateFailed ||
-			state == webrtc.PeerConnectionStateClosed ||
-			state == webrtc.PeerConnectionStateDisconnected {
-			// Disconnected may recover; only tear down on failed/closed.
-			if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
-				r.RemovePublisher(peerID)
-			}
+		if peer.resetting.Load() || peer.PC != pc {
+			return
+		}
+		// PC caiu mas o WebSocket do host pode continuar — só encerra a mídia.
+		if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
+			r.StopStream(peerID)
 		}
 	})
 
@@ -189,6 +211,7 @@ func (r *Room) handlePublisherTrack(remote *webrtc.TrackRemote, receiver *webrtc
 		subs = append(subs, s)
 	}
 	r.mu.Unlock()
+	r.notifyChange()
 
 	for _, sub := range subs {
 		if err := r.addTrackAndNegotiate(sub, local); err != nil {
@@ -321,6 +344,7 @@ func (r *Room) AddSubscriber(peerID string, sender Sender) (*Peer, error) {
 	}
 
 	log.Printf("subscriber joined room=%s peer=%s tracks=%d", r.ID, peerID, len(tracks))
+	r.notifyChange()
 
 	// Negotiate after unlock via goroutine so join response can go first.
 	if len(tracks) > 0 {
@@ -422,6 +446,107 @@ func (r *Room) getPeer(peerID string) (*Peer, error) {
 	return nil, ErrNotAuthorized
 }
 
+// StopStream ends the current broadcast but keeps the publisher in the room
+// so they can start sharing again without rejoining.
+func (r *Room) StopStream(peerID string) {
+	r.mu.Lock()
+	if r.publisher == nil || r.publisher.ID != peerID {
+		r.mu.Unlock()
+		return
+	}
+	pub := r.publisher
+	if pub.resetting.Load() {
+		r.mu.Unlock()
+		return
+	}
+
+	hadMedia := len(r.tracks) > 0
+	pcState := webrtc.PeerConnectionStateNew
+	if pub.PC != nil {
+		pcState = pub.PC.ConnectionState()
+	}
+	needReset := hadMedia ||
+		pcState == webrtc.PeerConnectionStateClosed ||
+		pcState == webrtc.PeerConnectionStateFailed
+	if !needReset {
+		r.mu.Unlock()
+		return
+	}
+
+	r.tracks = make(map[string]*webrtc.TrackLocalStaticRTP)
+	subs := make([]*Peer, 0, len(r.subscribers))
+	for _, s := range r.subscribers {
+		subs = append(subs, s)
+	}
+	r.mu.Unlock()
+
+	log.Printf("stream stopped room=%s peer=%s subscribers=%d had_media=%v", r.ID, peerID, len(subs), hadMedia)
+
+	if hadMedia {
+		for _, s := range subs {
+			_ = s.Sender.SendJSON(map[string]any{
+				"action":  "ended",
+				"message": "stream stopped",
+			})
+			if err := r.resetSubscriberPC(s); err != nil {
+				log.Printf("reset subscriber pc room=%s peer=%s: %v", r.ID, s.ID, err)
+			}
+		}
+	}
+
+	if err := r.resetPublisherPC(pub); err != nil {
+		log.Printf("reset publisher pc room=%s peer=%s: %v", r.ID, peerID, err)
+	}
+	r.notifyChange()
+}
+
+func (r *Room) resetPublisherPC(pub *Peer) error {
+	pub.resetting.Store(true)
+	defer pub.resetting.Store(false)
+
+	if pub.PC != nil {
+		_ = pub.PC.Close()
+	}
+
+	pc, err := newPeerConnection()
+	if err != nil {
+		return err
+	}
+	pub.PC = pc
+	peerID := pub.ID
+	sender := pub.Sender
+
+	pc.OnICECandidate(func(c *webrtc.ICECandidate) {
+		if c == nil {
+			return
+		}
+		cand := c.ToJSON()
+		_ = sender.SendJSON(map[string]any{
+			"action": "candidate",
+			"candidate": map[string]any{
+				"candidate":     cand.Candidate,
+				"sdpMid":        cand.SDPMid,
+				"sdpMLineIndex": cand.SDPMLineIndex,
+			},
+		})
+	})
+
+	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		log.Printf("publisher pc state room=%s peer=%s state=%s", r.ID, peerID, state.String())
+		if pub.resetting.Load() || pub.PC != pc {
+			return
+		}
+		if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
+			r.StopStream(peerID)
+		}
+	})
+
+	pc.OnTrack(func(remote *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+		r.handlePublisherTrack(remote, receiver)
+	})
+	return nil
+}
+
 // RemovePublisher tears down the publisher and stream, but keeps subscribers in the room.
 func (r *Room) RemovePublisher(peerID string) {
 	r.mu.Lock()
@@ -438,6 +563,7 @@ func (r *Room) RemovePublisher(peerID string) {
 	}
 	r.mu.Unlock()
 
+	pub.resetting.Store(true)
 	if pub.PC != nil {
 		_ = pub.PC.Close()
 	}
@@ -448,15 +574,18 @@ func (r *Room) RemovePublisher(peerID string) {
 			"action":  "ended",
 			"message": "publisher disconnected",
 		})
-		// Recria a PeerConnection do guest para uma próxima transmissão; mantém o WebSocket.
 		if err := r.resetSubscriberPC(s); err != nil {
 			log.Printf("reset subscriber pc room=%s peer=%s: %v", r.ID, s.ID, err)
 		}
 	}
+	r.notifyChange()
 }
 
 // resetSubscriberPC closes the old PC and attaches a fresh one for future offers.
 func (r *Room) resetSubscriberPC(sub *Peer) error {
+	sub.resetting.Store(true)
+	defer sub.resetting.Store(false)
+
 	if sub.PC != nil {
 		_ = sub.PC.Close()
 	}
@@ -485,9 +614,6 @@ func (r *Room) resetSubscriberPC(sub *Peer) error {
 
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		log.Printf("subscriber pc state room=%s peer=%s state=%s", r.ID, peerID, state.String())
-		if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
-			// Ignore closed during intentional reset while publisher is gone.
-		}
 	})
 	return nil
 }
@@ -507,6 +633,7 @@ func (r *Room) RemoveSubscriber(peerID string) {
 		_ = sub.PC.Close()
 	}
 	log.Printf("subscriber left room=%s peer=%s", r.ID, peerID)
+	r.notifyChange()
 }
 
 // Close shuts down all peers in the room.

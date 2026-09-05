@@ -202,16 +202,21 @@ function connect() {
         break;
 
       case "ended":
-        setHint(true, "Transmissão encerrada — aguardando o host…");
-        setStatus(msg.message || "Host saiu. A sala continua aberta.");
-        if (remote.srcObject) {
-          remote.srcObject.getTracks().forEach((t) => t.stop());
-          remote.srcObject = null;
-        }
-        if (pc) {
-          pc.close();
-          pc = null;
-        }
+        setHint(true, "Aguardando transmissão…");
+        setStatus(
+          role === "publisher"
+            ? "Pronto. Clique em Compartilhar tela."
+            : (msg.message === "stream stopped"
+              ? "Transmissão pausada — aguardando o host…"
+              : "Host saiu. A sala continua aberta.")
+        );
+        clearRemoteMedia();
+        break;
+
+      case "stopped":
+        // Confirmação do servidor após o host parar a live.
+        setHint(true, "Compartilhamento parado");
+        setStatus("Pronto. Clique em Compartilhar tela.");
         break;
 
       case "error":
@@ -227,6 +232,43 @@ function connect() {
   ws.onerror = () => {
     setError("Falha na conexão WebSocket");
   };
+}
+
+function clearRemoteMedia() {
+  if (remote.srcObject) {
+    remote.srcObject.getTracks().forEach((t) => {
+      try {
+        t.stop();
+      } catch {
+        /* ignore */
+      }
+    });
+    remote.srcObject = null;
+  }
+  pendingCandidates.length = 0;
+  if (pc) {
+    pc.close();
+    pc = null;
+  }
+}
+
+function clearLocalMedia() {
+  if (localStream) {
+    localStream.getTracks().forEach((t) => t.stop());
+    localStream = null;
+  }
+  if (micStream) {
+    micStream.getTracks().forEach((t) => t.stop());
+    micStream = null;
+  }
+  preview.srcObject = null;
+  preview.hidden = true;
+  remote.hidden = false;
+  pendingCandidates.length = 0;
+  if (pc) {
+    pc.close();
+    pc = null;
+  }
 }
 
 async function tuneVideoSender(peer) {
@@ -296,6 +338,13 @@ async function captureDisplayWithAudio() {
 async function startShare() {
   setError("");
   try {
+    // Garante PC limpa se uma transmissão anterior deixou estado residual.
+    if (pc) {
+      pc.close();
+      pc = null;
+    }
+    pendingCandidates.length = 0;
+
     const stream = await captureDisplayWithAudio();
     localStream = stream;
     preview.srcObject = stream;
@@ -325,29 +374,19 @@ async function startShare() {
     }
   } catch (err) {
     setError(err.message || "Não foi possível compartilhar a tela");
+    clearLocalMedia();
+    btnShare.hidden = false;
+    btnStop.hidden = true;
   }
 }
 
 function stopShare() {
-  if (localStream) {
-    localStream.getTracks().forEach((t) => t.stop());
-    localStream = null;
-  }
-  if (micStream) {
-    micStream.getTracks().forEach((t) => t.stop());
-    micStream = null;
-  }
-  preview.srcObject = null;
-  preview.hidden = true;
-  remote.hidden = false;
-  if (pc) {
-    pc.close();
-    pc = null;
-  }
+  send({ action: "stop" });
+  clearLocalMedia();
   btnShare.hidden = false;
   btnStop.hidden = true;
   setHint(true, "Compartilhamento parado");
-  setStatus("Compartilhamento parado — recarregue a página para transmitir de novo");
+  setStatus("Pronto. Clique em Compartilhar tela.");
 }
 
 // Clique no player do espectador destrava autoplay com áudio.

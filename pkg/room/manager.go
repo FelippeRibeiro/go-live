@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"sort"
 	"sync"
 )
 
@@ -21,15 +22,40 @@ var (
 
 var roomIDPattern = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
 
+// PublicRoom is a hub card payload for rooms without password.
+type PublicRoom struct {
+	RoomID  string `json:"room_id"`
+	Name    string `json:"name"`
+	Live    bool   `json:"live"`
+	Viewers int    `json:"viewers"`
+}
+
 // Manager holds all active rooms behind an RWMutex.
 type Manager struct {
-	mu    sync.RWMutex
-	rooms map[string]*Room
+	mu       sync.RWMutex
+	rooms    map[string]*Room
+	onChange func()
 }
 
 // NewManager creates an empty room manager.
 func NewManager() *Manager {
 	return &Manager{rooms: make(map[string]*Room)}
+}
+
+// SetOnChange registers a callback fired when the public hub list may change.
+func (m *Manager) SetOnChange(fn func()) {
+	m.mu.Lock()
+	m.onChange = fn
+	m.mu.Unlock()
+}
+
+func (m *Manager) notifyChange() {
+	m.mu.RLock()
+	fn := m.onChange
+	m.mu.RUnlock()
+	if fn != nil {
+		fn()
+	}
 }
 
 // CreateRoomInput is the payload for creating a room.
@@ -60,14 +86,18 @@ func (m *Manager) Create(in CreateRoomInput) (*CreateRoomResult, error) {
 	}
 
 	r := NewRoom(id, name, in.Password)
+	r.onChange = m.notifyChange
 
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if _, exists := m.rooms[id]; exists {
+		m.mu.Unlock()
 		return nil, ErrRoomExists
 	}
 	m.rooms[id] = r
+	m.mu.Unlock()
+
 	log.Printf("room created id=%s name=%q password_protected=%v", id, name, in.Password != "")
+	m.notifyChange()
 	return &CreateRoomResult{RoomID: id, Name: name}, nil
 }
 
@@ -85,6 +115,29 @@ func (m *Manager) Get(id string) (*Room, error) {
 	return r, nil
 }
 
+// ListPublic returns all rooms without password for the hub.
+func (m *Manager) ListPublic() []PublicRoom {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]PublicRoom, 0, len(m.rooms))
+	for _, r := range m.rooms {
+		if r.HasPassword() {
+			continue
+		}
+		out = append(out, r.PublicSnapshot())
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Live != out[j].Live {
+			return out[i].Live
+		}
+		if out[i].Name != out[j].Name {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].RoomID < out[j].RoomID
+	})
+	return out
+}
+
 // Delete removes a room from the manager and closes it.
 func (m *Manager) Delete(id string) {
 	m.mu.Lock()
@@ -96,6 +149,7 @@ func (m *Manager) Delete(id string) {
 	if ok {
 		r.Close()
 		log.Printf("room deleted id=%s", id)
+		m.notifyChange()
 	}
 }
 
@@ -115,6 +169,7 @@ func (m *Manager) RemoveIfEmpty(id string) {
 	m.mu.Unlock()
 	r.Close()
 	log.Printf("room cleaned (empty) id=%s", id)
+	m.notifyChange()
 }
 
 // ValidRoomID checks alphanumerics and hyphens only.

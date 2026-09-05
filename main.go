@@ -23,30 +23,38 @@ func main() {
 
 	mgr := room.NewManager()
 	sig := &signaling.Handler{Manager: mgr}
+	hub := signaling.NewHub(mgr)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/rooms", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
+		switch r.Method {
+		case http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"rooms": mgr.ListPublic(),
+			})
+		case http.MethodPost:
+			var body struct {
+				Name     string `json:"name"`
+				Password string `json:"password"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil && r.ContentLength != 0 {
+				http.Error(w, "invalid json", http.StatusBadRequest)
+				return
+			}
+			res, err := mgr.Create(room.CreateRoomInput{Name: body.Name, Password: body.Password})
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(res)
+		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
 		}
-		var body struct {
-			Name     string `json:"name"`
-			Password string `json:"password"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil && r.ContentLength != 0 {
-			http.Error(w, "invalid json", http.StatusBadRequest)
-			return
-		}
-		res, err := mgr.Create(room.CreateRoomInput{Name: body.Name, Password: body.Password})
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(res)
 	})
 	mux.HandleFunc("/ws", sig.ServeWS)
+	mux.HandleFunc("/ws/hub", hub.ServeWS)
 
 	publicDir := filepath.Join(".", "public")
 	fs := http.FileServer(http.Dir(publicDir))

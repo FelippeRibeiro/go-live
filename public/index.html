@@ -12,12 +12,21 @@
 <body class="page-home">
   <div class="atmosphere" aria-hidden="true"></div>
 
-  <main class="home">
+  <main class="home home-with-hub">
     <header class="brand">
       <p class="brand-mark">Go Live</p>
       <h1 class="brand-tagline">Salas virtuais com latência de transmissão ao vivo.</h1>
       <p class="brand-lead">Compartilhe sua tela em tempo real. Sem plugins, sem instalação.</p>
     </header>
+
+    <section class="hub" aria-label="Lives públicas">
+      <div class="hub-head">
+        <h2>Lives agora</h2>
+        <span id="hub-status" class="hub-status">Conectando…</span>
+      </div>
+      <div id="hub-grid" class="hub-grid"></div>
+      <p id="hub-empty" class="hub-empty">Nenhuma sala pública no momento. Crie uma abaixo.</p>
+    </section>
 
     <section class="actions" aria-label="Criar ou entrar em uma sala">
       <form id="create-form" class="action-block">
@@ -34,7 +43,7 @@
       </form>
 
       <form id="join-form" class="action-block">
-        <h2>Entrar como espectador</h2>
+        <h2>Entrar com ID</h2>
         <label>
           <span>ID da sala</span>
           <input type="text" name="room_id" placeholder="a1b2-c3d4" required pattern="[a-zA-Z0-9-]+" />

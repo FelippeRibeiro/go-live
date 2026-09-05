@@ -130,6 +130,18 @@ func (h *Handler) ServeWS(w http.ResponseWriter, r *http.Request) {
 				"name":    rm.Name,
 			})
 
+		case "stop":
+			if joinedRoom == nil || role != room.RolePublisher {
+				_ = client.SendJSON(map[string]any{"action": "error", "message": "only publisher can stop"})
+				return
+			}
+			log.Printf("stop stream room=%s peer=%s", joinedRoom.ID, peerID)
+			joinedRoom.StopStream(peerID)
+			_ = client.SendJSON(map[string]any{
+				"action":  "stopped",
+				"message": "stream stopped",
+			})
+
 		case "offer":
 			if joinedRoom == nil {
 				_ = client.SendJSON(map[string]any{"action": "error", "message": "not joined"})

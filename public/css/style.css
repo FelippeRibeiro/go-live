@@ -113,6 +113,133 @@ body {
   margin: 0 auto;
 }
 
+.home-with-hub {
+  align-content: start;
+  max-width: 1100px;
+  padding-top: clamp(2rem, 6vw, 4rem);
+  padding-bottom: 3rem;
+}
+
+.hub {
+  animation: rise 0.9s var(--ease) 0.15s both;
+}
+
+.hub-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.hub-head h2 {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.hub-status {
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.hub-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.hub-empty {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+}
+
+.hub-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.2s var(--ease);
+}
+
+.hub-card:hover {
+  transform: translateY(-3px);
+}
+
+.hub-thumb {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 40%, #1a3338 0%, #061214 70%);
+  border: 1px solid rgba(12, 31, 36, 0.2);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+
+.hub-thumb.is-live {
+  background:
+    radial-gradient(ellipse 80% 70% at 30% 20%, rgba(13, 148, 136, 0.35), transparent 55%),
+    radial-gradient(ellipse 60% 50% at 80% 80%, rgba(217, 119, 6, 0.2), transparent 50%),
+    linear-gradient(160deg, #0c1f24 0%, #061214 100%);
+}
+
+.hub-thumb-label {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.5rem;
+  letter-spacing: 0.12em;
+  color: rgba(232, 244, 242, 0.35);
+}
+
+.hub-thumb.is-live .hub-thumb-label {
+  color: rgba(232, 244, 242, 0.85);
+}
+
+.hub-live-dot {
+  position: absolute;
+  top: 0.6rem;
+  left: 0.6rem;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5);
+  animation: pulse-live 1.6s ease-out infinite;
+}
+
+@keyframes pulse-live {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.45); }
+  70% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+.hub-card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.hub-card-name {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hub-card-sub {
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
 .actions {
   display: grid;
   gap: 1.75rem;
