@@ -1,5 +1,21 @@
+# Binaries
+/go-live
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test / coverage
+*.test
+*.out
+coverage.html
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Env
 .env
-tmp/
-/frontend/node_modules
-/frontend/dist
-/public

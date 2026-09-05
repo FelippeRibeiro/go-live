@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sala — Go Live</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body class="page-room">
+  <div class="atmosphere atmosphere-room" aria-hidden="true"></div>
+
+  <header class="room-bar">
+    <a class="brand-mark brand-mark-sm" href="/">Go Live</a>
+    <div class="room-meta">
+      <span id="room-name">Sala</span>
+      <code id="room-id"></code>
+      <span id="role-badge" class="badge"></span>
+    </div>
+    <a class="btn btn-ghost" href="/">Sair</a>
+  </header>
+
+  <main class="room-stage">
+    <div class="stage-frame">
+      <video id="preview" autoplay playsinline muted hidden></video>
+      <video id="remote" autoplay playsinline controls></video>
+      <p id="stage-hint" class="stage-hint">Aguardando transmissão…</p>
+    </div>
+
+    <div id="host-controls" class="host-controls" hidden>
+      <button type="button" id="btn-share" class="btn btn-primary">Compartilhar tela</button>
+      <button type="button" id="btn-stop" class="btn btn-secondary" hidden>Parar compartilhamento</button>
+      <p class="host-hint">Compartilhe o ID da sala com quem for assistir.</p>
+    </div>
+
+    <p id="room-status" class="status"></p>
+    <p id="room-error" class="error" hidden></p>
+  </main>
+
+  <script type="module" src="/js/webrtc.js"></script>
+</body>
+</html>

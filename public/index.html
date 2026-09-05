@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Go Live</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body class="page-home">
+  <div class="atmosphere" aria-hidden="true"></div>
+
+  <main class="home">
+    <header class="brand">
+      <p class="brand-mark">Go Live</p>
+      <h1 class="brand-tagline">Salas virtuais com latência de transmissão ao vivo.</h1>
+      <p class="brand-lead">Compartilhe sua tela em tempo real. Sem plugins, sem instalação.</p>
+    </header>
+
+    <section class="actions" aria-label="Criar ou entrar em uma sala">
+      <form id="create-form" class="action-block">
+        <h2>Criar sala</h2>
+        <label>
+          <span>Nome</span>
+          <input type="text" name="name" placeholder="Minha transmissão" maxlength="64" />
+        </label>
+        <label>
+          <span>Senha <em>(opcional)</em></span>
+          <input type="password" name="password" placeholder="Deixe vazio para sala pública" autocomplete="new-password" />
+        </label>
+        <button type="submit" class="btn btn-primary">Criar e transmitir</button>
+      </form>
+
+      <form id="join-form" class="action-block">
+        <h2>Entrar como espectador</h2>
+        <label>
+          <span>ID da sala</span>
+          <input type="text" name="room_id" placeholder="a1b2-c3d4" required pattern="[a-zA-Z0-9-]+" />
+        </label>
+        <label>
+          <span>Senha</span>
+          <input type="password" name="password" placeholder="Se a sala exigir" autocomplete="current-password" />
+        </label>
+        <button type="submit" class="btn btn-secondary">Assistir</button>
+      </form>
+    </section>
+
+    <p id="home-error" class="error" hidden></p>
+  </main>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
