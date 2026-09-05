@@ -7,7 +7,6 @@ const preview = document.getElementById("preview");
 const remote = document.getElementById("remote");
 const stageFrame = document.getElementById("stage-frame");
 const stageHint = document.getElementById("stage-hint");
-const hostControls = document.getElementById("host-controls");
 const btnShare = document.getElementById("btn-share");
 const btnStop = document.getElementById("btn-stop");
 const btnFullscreen = document.getElementById("btn-fullscreen");
@@ -21,7 +20,6 @@ const roleBadge = document.getElementById("role-badge");
 let currentRole = role;
 
 roomIdEl.textContent = roomId;
-roleBadge.textContent = currentRole === "publisher" ? "Host" : "Espectador";
 
 function updateRoleUI() {
   roleBadge.textContent = currentRole === "publisher" ? "Host" : "Espectador";
@@ -67,37 +65,6 @@ let ws = null;
 let publishRequestPending = false;
 const pendingCandidates = [];
 
-function setStatus(msg) {
-  statusEl.textContent = msg || "";
-}
-
-function setError(msg) {
-  errorEl.hidden = !msg;
-  errorEl.textContent = msg || "";
-}
-
-function setHint(visible, text) {
-  if (text) stageHint.textContent = text;
-  stageHint.style.display = visible ? "grid" : "none";
-}
-
-if (!roomId || !/^[a-zA-Z0-9-]+$/.test(roomId)) {
-  setError("Sala inválida. Volte e crie ou entre com um ID válido.");
-  throw new Error("invalid room");
-}
-
-const iceServers = [{ urls: "stun:stun.l.google.com:19302" }];
-
-/** Bitrate alto para tela local (8 Mbps) — o browser adapta se a rede não aguentar. */
-const VIDEO_MAX_BITRATE = 8_000_000;
-const VIDEO_MAX_FRAMERATE = 30;
-
-let pc = null;
-let localStream = null;
-let micStream = null;
-let ws = null;
-const pendingCandidates = [];
-
 function wsURL() {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   return `${proto}//${location.host}/ws`;
@@ -137,14 +104,12 @@ async function ensurePC() {
       stream = new MediaStream();
       remote.srcObject = stream;
     }
-    // Remove track antiga do mesmo kind (restart da live).
     for (const old of stream.getTracks()) {
       if (old.kind === ev.track.kind) {
         stream.removeTrack(old);
       }
     }
     stream.addTrack(ev.track);
-    // Reatribui para forçar o <video> redesenhar após restart.
     remote.srcObject = stream;
     setHint(false);
     setStatus("Recebendo transmissão");
@@ -257,9 +222,9 @@ function connect() {
         setStatus(
           currentRole === "publisher"
             ? "Pronto. Clique em Compartilhar tela."
-            : (msg.message === "stream stopped"
+            : msg.message === "stream stopped"
               ? "Transmissão pausada — aguardando o host…"
-              : "Host saiu. A sala continua aberta.")
+              : "Host saiu. A sala continua aberta."
         );
         clearRemoteMedia();
         break;
@@ -284,11 +249,8 @@ function connect() {
 
       case "error":
         publishRequestPending = false;
-        if (msg.message) {
-          // Erros de host presente: alert claro para o guest.
-          if (/host/i.test(msg.message) || /publisher/i.test(msg.message)) {
-            alert(msg.message);
-          }
+        if (msg.message && (/host/i.test(msg.message) || /publisher/i.test(msg.message))) {
+          alert(msg.message);
         }
         setError(msg.message || "Erro de sinalização");
         break;
@@ -305,7 +267,6 @@ function connect() {
 }
 
 function clearRemoteMedia() {
-  // Não chamar track.stop() em tracks remotas — só solta o elemento e a PC.
   remote.srcObject = null;
   pendingCandidates.length = 0;
   if (pc) {
@@ -364,7 +325,6 @@ async function captureDisplayWithAudio() {
       autoGainControl: false,
       sampleRate: 48000,
     },
-    // Chromium: incluir áudio do sistema quando disponível
     systemAudio: "include",
     selfBrowserSurface: "exclude",
   });
@@ -374,7 +334,6 @@ async function captureDisplayWithAudio() {
     videoTrack.contentHint = "detail";
   }
 
-  // Linux / alguns browsers não entregam áudio do display — fallback no microfone.
   if (displayStream.getAudioTracks().length === 0) {
     try {
       micStream = await navigator.mediaDevices.getUserMedia({
@@ -400,7 +359,6 @@ async function captureDisplayWithAudio() {
 async function startShare() {
   setError("");
   try {
-    // Garante PC limpa se uma transmissão anterior deixou estado residual.
     if (pc) {
       pc.close();
       pc = null;
@@ -410,7 +368,7 @@ async function startShare() {
     const stream = await captureDisplayWithAudio();
     localStream = stream;
     preview.srcObject = stream;
-    preview.muted = true; // evita feedback no host
+    preview.muted = true;
     preview.hidden = false;
     remote.hidden = true;
     setHint(false);
@@ -463,17 +421,13 @@ function stopShare() {
   setStatus("Pronto. Clique em Compartilhar tela.");
 }
 
-// Clique no player do espectador destrava autoplay com áudio.
 remote?.addEventListener("click", () => {
   remote.muted = false;
   remote.play().catch(() => {});
 });
 
 function isFullscreen() {
-  return Boolean(
-    document.fullscreenElement ||
-      document.webkitFullscreenElement
-  );
+  return Boolean(document.fullscreenElement || document.webkitFullscreenElement);
 }
 
 async function toggleFullscreen() {
@@ -498,7 +452,6 @@ btnFullscreen?.addEventListener("click", (e) => {
   toggleFullscreen();
 });
 
-// Duplo clique no palco / vídeos → tela cheia
 stageFrame?.addEventListener("dblclick", toggleFullscreen);
 
 btnShare?.addEventListener("click", requestShare);

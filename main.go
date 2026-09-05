@@ -58,10 +58,19 @@ func main() {
 
 	publicDir := filepath.Join(".", "public")
 	fs := http.FileServer(http.Dir(publicDir))
-	mux.Handle("/", fs)
+	mux.Handle("/", noCache(fs))
 
 	log.Printf("mini-livestream listening on %s (CGO-free, Pion SFU)", addr)
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func noCache(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+		next.ServeHTTP(w, r)
+	})
 }
