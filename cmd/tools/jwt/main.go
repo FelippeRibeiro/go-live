@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"go-config/internal/middleware"
+	"github.com/FelippeRibeiro/go-live/internal/middleware"
 
 	"github.com/joho/godotenv"
 )

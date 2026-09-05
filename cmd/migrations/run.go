@@ -3,10 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"go-config/internal/db"
 	"log"
 	"os"
 	"sort"
+
+	"github.com/FelippeRibeiro/go-live/internal/db"
 
 	"github.com/joho/godotenv"
 )

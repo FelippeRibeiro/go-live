@@ -12,10 +12,10 @@ import (
 	"syscall"
 	"time"
 
-	"go-config/internal/db"
-	"go-config/internal/handler"
-	"go-config/internal/repository"
-	"go-config/internal/routes"
+	"github.com/FelippeRibeiro/go-live/internal/db"
+	"github.com/FelippeRibeiro/go-live/internal/handler"
+	"github.com/FelippeRibeiro/go-live/internal/repository"
+	"github.com/FelippeRibeiro/go-live/internal/routes"
 
 	"github.com/joho/godotenv"
 )

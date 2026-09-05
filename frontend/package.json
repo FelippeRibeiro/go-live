@@ -1,5 +1,5 @@
 {
-  "name": "go-config-frontend",
+  "name": "github.com/FelippeRibeiro/go-live-frontend",
   "private": true,
   "version": "0.1.0",
   "type": "module",

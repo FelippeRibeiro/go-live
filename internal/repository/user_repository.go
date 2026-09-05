@@ -3,7 +3,7 @@ package repository
 import (
 	"context"
 
-	"go-config/internal/db"
+	"github.com/FelippeRibeiro/go-live/internal/db"
 )
 
 type UserRepository interface {

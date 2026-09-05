@@ -1,4 +1,4 @@
-module go-config
+module github.com/FelippeRibeiro/go-live
 
 go 1.25.0
 

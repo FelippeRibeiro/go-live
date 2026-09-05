@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"go-config/internal/db"
-	"go-config/internal/repository"
+	"github.com/FelippeRibeiro/go-live/internal/db"
+	"github.com/FelippeRibeiro/go-live/internal/repository"
 )
 
 type UserHandler struct {

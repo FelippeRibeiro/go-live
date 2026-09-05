@@ -3,9 +3,9 @@ package routes
 import (
 	"net/http"
 
-	"go-config/internal/handler"
-	"go-config/internal/middleware"
-	"go-config/internal/server"
+	"github.com/FelippeRibeiro/go-live/internal/handler"
+	"github.com/FelippeRibeiro/go-live/internal/middleware"
+	"github.com/FelippeRibeiro/go-live/internal/server"
 )
 
 type Deps struct {
