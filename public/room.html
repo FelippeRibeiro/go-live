@@ -1,16 +1,27 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Sala — Go Live</title>
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("go-live-theme");
+        document.documentElement.setAttribute("data-theme", t === "light" ? "light" : "dark");
+      } catch (e) {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="/css/style.css?v=3" />
 </head>
 <body class="page-room">
   <div class="atmosphere atmosphere-room" aria-hidden="true"></div>
+  <button type="button" id="theme-toggle" class="theme-toggle">Modo claro</button>
 
   <header class="room-bar">
     <a class="brand-mark brand-mark-sm" href="/">Go Live</a>
@@ -43,6 +54,7 @@
     <p id="room-error" class="error" hidden></p>
   </main>
 
-  <script type="module" src="/js/webrtc.js?v=2"></script>
+  <script type="module" src="/js/theme.js?v=3"></script>
+  <script type="module" src="/js/webrtc.js?v=3"></script>
 </body>
 </html>
