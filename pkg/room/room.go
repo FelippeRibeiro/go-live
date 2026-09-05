@@ -312,9 +312,7 @@ func (r *Room) AddSubscriber(peerID string, sender Sender) (*Peer, error) {
 
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		log.Printf("subscriber pc state room=%s peer=%s state=%s", r.ID, peerID, state.String())
-		if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
-			r.RemoveSubscriber(peerID)
-		}
+		// Remoção de guest só via WebSocket disconnect — fecha/reset de PC não tira da sala.
 	})
 
 	tracks := make([]*webrtc.TrackLocalStaticRTP, 0, len(r.tracks))
@@ -424,7 +422,7 @@ func (r *Room) getPeer(peerID string) (*Peer, error) {
 	return nil, ErrNotAuthorized
 }
 
-// RemovePublisher tears down the publisher and notifies subscribers.
+// RemovePublisher tears down the publisher and stream, but keeps subscribers in the room.
 func (r *Room) RemovePublisher(peerID string) {
 	r.mu.Lock()
 	if r.publisher == nil || r.publisher.ID != peerID {
@@ -444,20 +442,54 @@ func (r *Room) RemovePublisher(peerID string) {
 		_ = pub.PC.Close()
 	}
 
-	log.Printf("publisher left room=%s peer=%s — notifying %d subscribers", r.ID, peerID, len(subs))
+	log.Printf("publisher left room=%s peer=%s — keeping %d subscribers", r.ID, peerID, len(subs))
 	for _, s := range subs {
 		_ = s.Sender.SendJSON(map[string]any{
 			"action":  "ended",
 			"message": "publisher disconnected",
 		})
-		if s.PC != nil {
-			_ = s.PC.Close()
+		// Recria a PeerConnection do guest para uma próxima transmissão; mantém o WebSocket.
+		if err := r.resetSubscriberPC(s); err != nil {
+			log.Printf("reset subscriber pc room=%s peer=%s: %v", r.ID, s.ID, err)
 		}
 	}
+}
 
-	r.mu.Lock()
-	r.subscribers = make(map[string]*Peer)
-	r.mu.Unlock()
+// resetSubscriberPC closes the old PC and attaches a fresh one for future offers.
+func (r *Room) resetSubscriberPC(sub *Peer) error {
+	if sub.PC != nil {
+		_ = sub.PC.Close()
+	}
+	pc, err := newPeerConnection()
+	if err != nil {
+		return err
+	}
+	sub.PC = pc
+	sender := sub.Sender
+	peerID := sub.ID
+
+	pc.OnICECandidate(func(c *webrtc.ICECandidate) {
+		if c == nil {
+			return
+		}
+		cand := c.ToJSON()
+		_ = sender.SendJSON(map[string]any{
+			"action": "candidate",
+			"candidate": map[string]any{
+				"candidate":     cand.Candidate,
+				"sdpMid":        cand.SDPMid,
+				"sdpMLineIndex": cand.SDPMLineIndex,
+			},
+		})
+	})
+
+	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		log.Printf("subscriber pc state room=%s peer=%s state=%s", r.ID, peerID, state.String())
+		if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
+			// Ignore closed during intentional reset while publisher is gone.
+		}
+	})
+	return nil
 }
 
 // RemoveSubscriber removes one viewer.

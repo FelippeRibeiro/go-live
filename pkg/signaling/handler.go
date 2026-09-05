@@ -57,14 +57,14 @@ func (h *Handler) ServeWS(w http.ResponseWriter, r *http.Request) {
 		if joinedRoom == nil {
 			return
 		}
+		roomID := joinedRoom.ID
 		switch role {
 		case room.RolePublisher:
 			joinedRoom.RemovePublisher(peerID)
-			h.Manager.Delete(joinedRoom.ID)
 		case room.RoleSubscriber:
 			joinedRoom.RemoveSubscriber(peerID)
-			h.Manager.RemoveIfEmpty(joinedRoom.ID)
 		}
+		h.Manager.RemoveIfEmpty(roomID)
 		joinedRoom = nil
 	}
 

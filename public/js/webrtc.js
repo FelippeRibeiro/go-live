@@ -194,8 +194,8 @@ function connect() {
         break;
 
       case "ended":
-        setHint(true, "Transmissão encerrada");
-        setStatus(msg.message || "Transmissão encerrada");
+        setHint(true, "Transmissão encerrada — aguardando o host…");
+        setStatus(msg.message || "Host saiu. A sala continua aberta.");
         if (remote.srcObject) {
           remote.srcObject.getTracks().forEach((t) => t.stop());
           remote.srcObject = null;
