@@ -36,6 +36,9 @@ type Peer struct {
 
 	// resetting evita que Close intencional dispare remoção/stop em cascata.
 	resetting atomic.Bool
+
+	renegMu    sync.Mutex
+	renegTimer *time.Timer
 }
 
 // Room is an SFU room: one publisher, many subscribers, shared local tracks.
@@ -216,7 +219,7 @@ func (r *Room) handlePublisherTrack(remote *webrtc.TrackRemote, receiver *webrtc
 	r.notifyChange()
 
 	for _, sub := range subs {
-		if err := r.addTrackAndNegotiate(sub, local); err != nil {
+		if err := r.addTrackToSubscriber(sub, local); err != nil {
 			log.Printf("attach track to subscriber %s: %v", sub.ID, err)
 		}
 	}
@@ -230,7 +233,15 @@ func (r *Room) handlePublisherTrack(remote *webrtc.TrackRemote, receiver *webrtc
 		}
 	}()
 
-	// PLI frequente: keyframes rápidos para late joiners e recuperação de perda.
+	ssrc := remote.SSRC()
+	// PLI imediato + rajada inicial (sem keyframe o guest fica com tela preta e áudio).
+	go func() {
+		for i := 0; i < 5; i++ {
+			_ = r.sendPLI(ssrc)
+			time.Sleep(400 * time.Millisecond)
+		}
+	}()
+
 	done := make(chan struct{})
 	go func() {
 		ticker := time.NewTicker(2 * time.Second)
@@ -240,7 +251,7 @@ func (r *Room) handlePublisherTrack(remote *webrtc.TrackRemote, receiver *webrtc
 			case <-done:
 				return
 			case <-ticker.C:
-				_ = r.sendPLI(remote.SSRC())
+				_ = r.sendPLI(ssrc)
 			}
 		}
 	}()
@@ -278,16 +289,36 @@ func trackKey(remote *webrtc.TrackRemote) string {
 	return fmt.Sprintf("%s:%s", remote.Kind().String(), remote.ID())
 }
 
-func (r *Room) addTrackAndNegotiate(sub *Peer, track *webrtc.TrackLocalStaticRTP) error {
+func (r *Room) addTrackToSubscriber(sub *Peer, track *webrtc.TrackLocalStaticRTP) error {
 	if _, err := sub.PC.AddTrack(track); err != nil {
 		return err
 	}
-	return r.negotiateSubscriber(sub)
+	// Debounce: áudio+vídeo chegam em OnTrack separados; um único offer evita
+	// offer/answer cruzados (sintoma clássico: áudio ok, vídeo preto).
+	r.queueSubscriberNegotiate(sub)
+	return nil
+}
+
+func (r *Room) queueSubscriberNegotiate(sub *Peer) {
+	sub.renegMu.Lock()
+	defer sub.renegMu.Unlock()
+	if sub.renegTimer != nil {
+		sub.renegTimer.Stop()
+	}
+	sub.renegTimer = time.AfterFunc(300*time.Millisecond, func() {
+		if err := r.negotiateSubscriber(sub); err != nil {
+			log.Printf("negotiate subscriber %s: %v", sub.ID, err)
+		}
+	})
 }
 
 func (r *Room) negotiateSubscriber(sub *Peer) error {
 	r.negotiateMu.Lock()
 	defer r.negotiateMu.Unlock()
+
+	if sub.PC == nil {
+		return fmt.Errorf("subscriber pc nil")
+	}
 
 	offer, err := sub.PC.CreateOffer(nil)
 	if err != nil {
@@ -407,7 +438,30 @@ func (r *Room) HandleAnswer(peerID string, sdp string) error {
 		return fmt.Errorf("set remote answer: %w", err)
 	}
 	log.Printf("sdp answer applied room=%s peer=%s", r.ID, peerID)
+
+	// Keyframe logo após o guest aceitar a oferta.
+	go r.sendPLIForAllVideoTracks()
 	return nil
+}
+
+func (r *Room) sendPLIForAllVideoTracks() {
+	r.mu.RLock()
+	pub := r.publisher
+	r.mu.RUnlock()
+	if pub == nil || pub.PC == nil {
+		return
+	}
+	for _, receiver := range pub.PC.GetReceivers() {
+		if receiver == nil || receiver.Track() == nil {
+			continue
+		}
+		if receiver.Track().Kind() != webrtc.RTPCodecTypeVideo {
+			continue
+		}
+		_ = pub.PC.WriteRTCP([]rtcp.Packet{
+			&rtcp.PictureLossIndication{MediaSSRC: uint32(receiver.Track().SSRC())},
+		})
+	}
 }
 
 // CandidatePayload matches the signaling JSON candidate object.
@@ -587,6 +641,13 @@ func (r *Room) RemovePublisher(peerID string) {
 
 // resetSubscriberPC closes the old PC and attaches a fresh one for future offers.
 func (r *Room) resetSubscriberPC(sub *Peer) error {
+	sub.renegMu.Lock()
+	if sub.renegTimer != nil {
+		sub.renegTimer.Stop()
+		sub.renegTimer = nil
+	}
+	sub.renegMu.Unlock()
+
 	sub.resetting.Store(true)
 	defer sub.resetting.Store(false)
 

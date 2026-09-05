@@ -87,21 +87,25 @@ async function ensurePC() {
     setStatus(`Conexão: ${pc.connectionState}`);
   };
 
-  // Acumula áudio + vídeo no mesmo MediaStream (SFU dispara ontrack por track).
+  // SFU dispara ontrack por mídia — monta um MediaStream novo por sessão.
   pc.ontrack = (ev) => {
     let stream = remote.srcObject;
     if (!(stream instanceof MediaStream)) {
       stream = new MediaStream();
       remote.srcObject = stream;
     }
-    if (!stream.getTracks().some((t) => t.id === ev.track.id)) {
-      stream.addTrack(ev.track);
+    // Remove track antiga do mesmo kind (restart da live).
+    for (const old of stream.getTracks()) {
+      if (old.kind === ev.track.kind) {
+        stream.removeTrack(old);
+      }
     }
+    stream.addTrack(ev.track);
+    // Reatribui para forçar o <video> redesenhar após restart.
+    remote.srcObject = stream;
     setHint(false);
     setStatus("Recebendo transmissão");
-    remote.play().catch(() => {
-      /* autoplay com áudio pode exigir gesto do usuário */
-    });
+    remote.play().catch(() => {});
   };
 
   return pc;
@@ -120,6 +124,14 @@ async function flushCandidates() {
 }
 
 async function handleOffer(sdp) {
+  // Offer do SFU após stop/start: PC limpa evita estado SDP quebrado.
+  if (pc) {
+    pc.close();
+    pc = null;
+  }
+  pendingCandidates.length = 0;
+  remote.srcObject = null;
+
   const peer = await ensurePC();
   await peer.setRemoteDescription({ type: "offer", sdp });
   await flushCandidates();
@@ -229,16 +241,8 @@ function connect() {
 }
 
 function clearRemoteMedia() {
-  if (remote.srcObject) {
-    remote.srcObject.getTracks().forEach((t) => {
-      try {
-        t.stop();
-      } catch {
-        /* ignore */
-      }
-    });
-    remote.srcObject = null;
-  }
+  // Não chamar track.stop() em tracks remotas — só solta o elemento e a PC.
+  remote.srcObject = null;
   pendingCandidates.length = 0;
   if (pc) {
     pc.close();
