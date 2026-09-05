@@ -1,0 +1,11 @@
+services:
+  go-live:
+    build: .
+    container_name: go-live
+    # Host network: necessário para WebRTC (UDP/ICE) funcionar de forma confiável no Linux.
+    network_mode: host
+    environment:
+      PORT: "8080"
+      # Opcional: anuncie o IP da máquina na LAN se não usar network_mode: host
+      # WEBRTC_NAT_1TO1_IP: "192.168.1.10"
+    restart: unless-stopped

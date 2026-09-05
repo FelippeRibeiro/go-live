@@ -1,0 +1,11 @@
+.git
+.gitignore
+.env
+*.md
+go-live
+*.exe
+*.test
+*.out
+.idea
+.vscode
+tmp

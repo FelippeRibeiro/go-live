@@ -17,6 +17,7 @@ var (
 	ErrInvalidRoomID   = errors.New("invalid room id")
 	ErrWrongPassword   = errors.New("wrong password")
 	ErrPublisherExists = errors.New("publisher already connected")
+	ErrLiveActive      = errors.New("live active")
 	ErrNotAuthorized   = errors.New("not authorized")
 )
 

@@ -142,6 +142,49 @@ func (h *Handler) ServeWS(w http.ResponseWriter, r *http.Request) {
 				"message": "stream stopped",
 			})
 
+		case "request_publish":
+			if joinedRoom == nil {
+				_ = client.SendJSON(map[string]any{"action": "error", "message": "not joined"})
+				return
+			}
+			if role == room.RolePublisher {
+				_ = client.SendJSON(map[string]any{"action": "publish_ok", "role": "publisher"})
+				return
+			}
+			if joinedRoom.IsLive() {
+				log.Printf("request_publish denied live_active room=%s peer=%s", joinedRoom.ID, peerID)
+				_ = client.SendJSON(map[string]any{
+					"action":  "live_active",
+					"message": "Já existe uma transmissão ativa nesta sala.",
+				})
+				return
+			}
+			if _, err := joinedRoom.PromotePublisher(peerID, client); err != nil {
+				log.Printf("request_publish failed room=%s peer=%s: %v", joinedRoom.ID, peerID, err)
+				if err == room.ErrLiveActive {
+					_ = client.SendJSON(map[string]any{
+						"action":  "live_active",
+						"message": "Já existe uma transmissão ativa nesta sala.",
+					})
+					return
+				}
+				if err == room.ErrPublisherExists {
+					_ = client.SendJSON(map[string]any{
+						"action":  "error",
+						"message": "Já existe um host nesta sala. Aguarde ou peça para ele compartilhar a tela.",
+					})
+					return
+				}
+				_ = client.SendJSON(map[string]any{"action": "error", "message": err.Error()})
+				return
+			}
+			role = room.RolePublisher
+			log.Printf("subscriber promoted to publisher room=%s peer=%s", joinedRoom.ID, peerID)
+			_ = client.SendJSON(map[string]any{
+				"action": "publish_ok",
+				"role":   "publisher",
+			})
+
 		case "offer":
 			if joinedRoom == nil {
 				_ = client.SendJSON(map[string]any{"action": "error", "message": "not joined"})

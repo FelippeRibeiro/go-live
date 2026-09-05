@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -110,6 +111,55 @@ func (r *Room) HasPassword() bool {
 	return r.Password != ""
 }
 
+// IsLive reports whether the publisher currently has media tracks.
+func (r *Room) IsLive() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.tracks) > 0
+}
+
+// HasPublisher reports whether a publisher peer is connected.
+func (r *Room) HasPublisher() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.publisher != nil
+}
+
+// PromotePublisher moves a subscriber into the publisher role when the slot is free
+// and there is no active live. Returns ErrLiveActive if someone is already streaming.
+func (r *Room) PromotePublisher(peerID string, sender Sender) (*Peer, error) {
+	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		return nil, ErrRoomNotFound
+	}
+	if len(r.tracks) > 0 {
+		r.mu.Unlock()
+		return nil, ErrLiveActive
+	}
+	if r.publisher != nil {
+		r.mu.Unlock()
+		return nil, ErrPublisherExists
+	}
+	var oldPC *webrtc.PeerConnection
+	if sub, ok := r.subscribers[peerID]; ok {
+		oldPC = sub.PC
+		delete(r.subscribers, peerID)
+	}
+	r.mu.Unlock()
+
+	if oldPC != nil {
+		_ = oldPC.Close()
+	}
+
+	peer, err := r.AddPublisher(peerID, sender)
+	if err != nil {
+		return nil, err
+	}
+	r.notifyChange()
+	return peer, nil
+}
+
 func newPeerConnection() (*webrtc.PeerConnection, error) {
 	me := &webrtc.MediaEngine{}
 	if err := me.RegisterDefaultCodecs(); err != nil {
@@ -128,6 +178,10 @@ func newPeerConnection() (*webrtc.PeerConnection, error) {
 		webrtc.NetworkTypeUDP4,
 		webrtc.NetworkTypeUDP6,
 	})
+	// Útil em Docker bridge: anuncia o IP público/LAN do host.
+	if natIP := os.Getenv("WEBRTC_NAT_1TO1_IP"); natIP != "" {
+		se.SetNAT1To1IPs([]string{natIP}, webrtc.ICECandidateTypeHost)
+	}
 
 	api := webrtc.NewAPI(
 		webrtc.WithMediaEngine(me),

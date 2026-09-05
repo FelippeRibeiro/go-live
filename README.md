@@ -7,6 +7,20 @@ Servidor SFU WebRTC em Go (Pion) com salas virtuais, compartilhamento de tela e 
 - Go 1.21+
 - Navegador com WebRTC (`getDisplayMedia`) — Chrome, Firefox ou Edge
 
+## Docker
+
+```bash
+docker compose up --build -d
+```
+
+Abra http://localhost:8080
+
+O compose usa `network_mode: host` (Linux) para o WebRTC/UDP funcionar corretamente.
+
+```bash
+docker compose down
+```
+
 ## Build
 
 ```bash

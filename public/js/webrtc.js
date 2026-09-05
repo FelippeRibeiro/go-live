@@ -11,18 +11,61 @@ const hostControls = document.getElementById("host-controls");
 const btnShare = document.getElementById("btn-share");
 const btnStop = document.getElementById("btn-stop");
 const btnFullscreen = document.getElementById("btn-fullscreen");
+const shareHint = document.getElementById("share-hint");
 const statusEl = document.getElementById("room-status");
 const errorEl = document.getElementById("room-error");
 const roomIdEl = document.getElementById("room-id");
 const roomNameEl = document.getElementById("room-name");
 const roleBadge = document.getElementById("role-badge");
 
-roomIdEl.textContent = roomId;
-roleBadge.textContent = role === "publisher" ? "Host" : "Espectador";
+let currentRole = role;
 
-if (role === "publisher") {
-  hostControls.hidden = false;
+roomIdEl.textContent = roomId;
+roleBadge.textContent = currentRole === "publisher" ? "Host" : "Espectador";
+
+function updateRoleUI() {
+  roleBadge.textContent = currentRole === "publisher" ? "Host" : "Espectador";
+  if (shareHint) {
+    shareHint.textContent =
+      currentRole === "publisher"
+        ? "Compartilhe o ID da sala com quem for assistir. Use ⛶ ou duplo clique para tela cheia."
+        : "Você pode transmitir se não houver live ativa. Use ⛶ ou duplo clique para tela cheia.";
+  }
 }
+
+updateRoleUI();
+
+function setStatus(msg) {
+  statusEl.textContent = msg || "";
+}
+
+function setError(msg) {
+  errorEl.hidden = !msg;
+  errorEl.textContent = msg || "";
+}
+
+function setHint(visible, text) {
+  if (text) stageHint.textContent = text;
+  stageHint.style.display = visible ? "grid" : "none";
+}
+
+if (!roomId || !/^[a-zA-Z0-9-]+$/.test(roomId)) {
+  setError("Sala inválida. Volte e crie ou entre com um ID válido.");
+  throw new Error("invalid room");
+}
+
+const iceServers = [{ urls: "stun:stun.l.google.com:19302" }];
+
+/** Bitrate alto para tela local (8 Mbps) — o browser adapta se a rede não aguentar. */
+const VIDEO_MAX_BITRATE = 8_000_000;
+const VIDEO_MAX_FRAMERATE = 30;
+
+let pc = null;
+let localStream = null;
+let micStream = null;
+let ws = null;
+let publishRequestPending = false;
+const pendingCandidates = [];
 
 function setStatus(msg) {
   statusEl.textContent = msg || "";
@@ -187,12 +230,14 @@ function connect() {
     switch (msg.action) {
       case "joined":
         roomNameEl.textContent = msg.name || "Sala";
+        currentRole = msg.role || currentRole;
+        updateRoleUI();
         setStatus(
-          role === "publisher"
+          currentRole === "publisher"
             ? "Pronto. Clique em Compartilhar tela."
             : "Na sala. Aguardando transmissão…"
         );
-        if (role === "subscriber") setHint(true, "Aguardando transmissão…");
+        if (currentRole === "subscriber") setHint(true, "Aguardando transmissão…");
         break;
 
       case "offer":
@@ -210,7 +255,7 @@ function connect() {
       case "ended":
         setHint(true, "Aguardando transmissão…");
         setStatus(
-          role === "publisher"
+          currentRole === "publisher"
             ? "Pronto. Clique em Compartilhar tela."
             : (msg.message === "stream stopped"
               ? "Transmissão pausada — aguardando o host…"
@@ -220,12 +265,31 @@ function connect() {
         break;
 
       case "stopped":
-        // Confirmação do servidor após o host parar a live.
         setHint(true, "Compartilhamento parado");
         setStatus("Pronto. Clique em Compartilhar tela.");
         break;
 
+      case "live_active":
+        publishRequestPending = false;
+        alert(msg.message || "Já existe uma transmissão ativa nesta sala.");
+        setStatus("Transmissão ativa — aguarde para transmitir.");
+        break;
+
+      case "publish_ok":
+        currentRole = "publisher";
+        updateRoleUI();
+        publishRequestPending = false;
+        await startShare();
+        break;
+
       case "error":
+        publishRequestPending = false;
+        if (msg.message) {
+          // Erros de host presente: alert claro para o guest.
+          if (/host/i.test(msg.message) || /publisher/i.test(msg.message)) {
+            alert(msg.message);
+          }
+        }
         setError(msg.message || "Erro de sinalização");
         break;
     }
@@ -378,6 +442,18 @@ async function startShare() {
   }
 }
 
+function requestShare() {
+  setError("");
+  if (currentRole === "publisher") {
+    startShare();
+    return;
+  }
+  if (publishRequestPending) return;
+  publishRequestPending = true;
+  setStatus("Verificando se há transmissão ativa…");
+  send({ action: "request_publish" });
+}
+
 function stopShare() {
   send({ action: "stop" });
   clearLocalMedia();
@@ -425,7 +501,7 @@ btnFullscreen?.addEventListener("click", (e) => {
 // Duplo clique no palco / vídeos → tela cheia
 stageFrame?.addEventListener("dblclick", toggleFullscreen);
 
-btnShare?.addEventListener("click", startShare);
+btnShare?.addEventListener("click", requestShare);
 btnStop?.addEventListener("click", stopShare);
 
 connect();
