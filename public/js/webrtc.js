@@ -5,10 +5,15 @@ const password = params.get("password") || "";
 
 const preview = document.getElementById("preview");
 const remote = document.getElementById("remote");
+const stageFrame = document.getElementById("stage-frame");
 const stageHint = document.getElementById("stage-hint");
 const hostControls = document.getElementById("host-controls");
+const viewerControls = document.getElementById("viewer-controls");
 const btnShare = document.getElementById("btn-share");
 const btnStop = document.getElementById("btn-stop");
+const btnFullscreen = document.getElementById("btn-fullscreen");
+const btnFullscreenHost = document.getElementById("btn-fullscreen-host");
+const btnFullscreenViewer = document.getElementById("btn-fullscreen-viewer");
 const statusEl = document.getElementById("room-status");
 const errorEl = document.getElementById("room-error");
 const roomIdEl = document.getElementById("room-id");
@@ -20,6 +25,9 @@ roleBadge.textContent = role === "publisher" ? "Host" : "Espectador";
 
 if (role === "publisher") {
   hostControls.hidden = false;
+  if (viewerControls) viewerControls.hidden = true;
+} else if (viewerControls) {
+  viewerControls.hidden = false;
 }
 
 function setStatus(msg) {
@@ -347,6 +355,40 @@ remote?.addEventListener("click", () => {
   remote.muted = false;
   remote.play().catch(() => {});
 });
+
+function isFullscreen() {
+  return Boolean(
+    document.fullscreenElement ||
+      document.webkitFullscreenElement
+  );
+}
+
+async function toggleFullscreen() {
+  const el = stageFrame;
+  if (!el) return;
+  try {
+    if (isFullscreen()) {
+      if (document.exitFullscreen) await document.exitFullscreen();
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+    } else if (el.requestFullscreen) {
+      await el.requestFullscreen();
+    } else if (el.webkitRequestFullscreen) {
+      el.webkitRequestFullscreen();
+    }
+  } catch (err) {
+    console.warn("fullscreen failed", err);
+  }
+}
+
+btnFullscreen?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  toggleFullscreen();
+});
+btnFullscreenHost?.addEventListener("click", toggleFullscreen);
+btnFullscreenViewer?.addEventListener("click", toggleFullscreen);
+
+// Duplo clique no palco / vídeos → tela cheia
+stageFrame?.addEventListener("dblclick", toggleFullscreen);
 
 btnShare?.addEventListener("click", startShare);
 btnStop?.addEventListener("click", stopShare);
