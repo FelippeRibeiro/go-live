@@ -48,7 +48,7 @@ function setHint(visible, text) {
 }
 
 if (!roomId || !/^[a-zA-Z0-9-]+$/.test(roomId)) {
-  setError("Sala inválida. Volte e crie ou entre com um ID válido.");
+  window.location.replace("/?missing=1");
   throw new Error("invalid room");
 }
 
@@ -249,6 +249,13 @@ function connect() {
 
       case "error":
         publishRequestPending = false;
+        if (
+          msg.message === "room not found" ||
+          msg.message === "invalid room_id"
+        ) {
+          window.location.replace("/?missing=1");
+          return;
+        }
         if (msg.message && (/host/i.test(msg.message) || /publisher/i.test(msg.message))) {
           alert(msg.message);
         }

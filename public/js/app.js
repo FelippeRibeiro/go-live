@@ -10,6 +10,12 @@ function showError(msg) {
   errorEl.textContent = msg || "";
 }
 
+// Feedback ao cair na home porque a sala não existia (ou ID inválido).
+if (new URLSearchParams(location.search).get("missing") === "1") {
+  showError("Sala não encontrada. Crie uma nova ou entre com outro ID.");
+  history.replaceState({}, "", "/");
+}
+
 function escapeHTML(str) {
   return String(str)
     .replace(/&/g, "&amp;")
