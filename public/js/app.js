@@ -92,8 +92,19 @@ function connectHub() {
   };
 }
 
+let creatingRoom = false;
+
 createForm?.addEventListener("submit", async (e) => {
   e.preventDefault();
+  if (creatingRoom) return;
+  creatingRoom = true;
+
+  const submitBtn = createForm.querySelector('button[type="submit"]');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Criando…";
+  }
+
   showError("");
   const fd = new FormData(createForm);
   const name = String(fd.get("name") || "").trim();
@@ -116,12 +127,21 @@ createForm?.addEventListener("submit", async (e) => {
     if (password) params.set("password", password);
     window.location.href = `/room.html?${params.toString()}`;
   } catch (err) {
+    creatingRoom = false;
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Criar e transmitir";
+    }
     showError(err.message || "Falha ao criar sala");
   }
 });
 
+let joiningRoom = false;
+
 joinForm?.addEventListener("submit", (e) => {
   e.preventDefault();
+  if (joiningRoom) return;
+
   showError("");
   const fd = new FormData(joinForm);
   const roomId = String(fd.get("room_id") || "").trim();
@@ -130,6 +150,14 @@ joinForm?.addEventListener("submit", (e) => {
     showError("ID da sala inválido");
     return;
   }
+
+  joiningRoom = true;
+  const submitBtn = joinForm.querySelector('button[type="submit"]');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Entrando…";
+  }
+
   const params = new URLSearchParams({
     room: roomId,
     role: "subscriber",

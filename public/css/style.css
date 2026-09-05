@@ -400,8 +400,10 @@ input:focus {
   transform: translateY(-1px);
 }
 
-.btn:active {
-  transform: translateY(0);
+.btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .btn-primary {
