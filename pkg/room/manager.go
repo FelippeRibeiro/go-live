@@ -53,9 +53,10 @@ func (m *Manager) notifyChange() {
 	m.mu.RLock()
 	fn := m.onChange
 	m.mu.RUnlock()
-	if fn != nil {
-		fn()
+	if fn == nil {
+		return
 	}
+	go fn()
 }
 
 // CreateRoomInput is the payload for creating a room.
@@ -118,12 +119,17 @@ func (m *Manager) Get(id string) (*Room, error) {
 // ListPublic returns all rooms without password for the hub.
 func (m *Manager) ListPublic() []PublicRoom {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
-	out := make([]PublicRoom, 0, len(m.rooms))
+	rooms := make([]*Room, 0, len(m.rooms))
 	for _, r := range m.rooms {
 		if r.HasPassword() {
 			continue
 		}
+		rooms = append(rooms, r)
+	}
+	m.mu.RUnlock()
+
+	out := make([]PublicRoom, 0, len(rooms))
+	for _, r := range rooms {
 		out = append(out, r.PublicSnapshot())
 	}
 	sort.Slice(out, func(i, j int) bool {

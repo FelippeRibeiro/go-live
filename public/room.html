@@ -27,7 +27,7 @@
       <video id="preview" autoplay playsinline muted hidden></video>
       <video id="remote" autoplay playsinline controls></video>
       <p id="stage-hint" class="stage-hint">Aguardando transmissão…</p>
-      <button type="button" id="btn-fullscreen" class="btn-fullscreen" title="Tela cheia" aria-label="Tela cheia">
+      <button type="button" id="btn-fullscreen" class="btn-fullscreen" title="Tela cheia (ou duplo clique)" aria-label="Tela cheia">
         <span class="fs-enter" aria-hidden="true">⛶</span>
         <span class="fs-exit" aria-hidden="true" hidden>✕</span>
       </button>
@@ -36,14 +36,9 @@
     <div id="host-controls" class="host-controls" hidden>
       <button type="button" id="btn-share" class="btn btn-primary">Compartilhar tela</button>
       <button type="button" id="btn-stop" class="btn btn-secondary" hidden>Parar compartilhamento</button>
-      <button type="button" id="btn-fullscreen-host" class="btn btn-secondary">Tela cheia</button>
-      <p class="host-hint">Compartilhe o ID da sala com quem for assistir. Duplo clique no vídeo também ativa tela cheia.</p>
+      <p class="host-hint">Compartilhe o ID da sala com quem for assistir. Use ⛶ ou duplo clique para tela cheia.</p>
     </div>
 
-    <div id="viewer-controls" class="host-controls">
-      <button type="button" id="btn-fullscreen-viewer" class="btn btn-secondary">Tela cheia</button>
-      <p class="host-hint">Duplo clique no vídeo para tela cheia. Pressione Esc para sair.</p>
-    </div>
     <p id="room-status" class="status"></p>
     <p id="room-error" class="error" hidden></p>
   </main>

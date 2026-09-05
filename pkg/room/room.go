@@ -65,9 +65,11 @@ func NewRoom(id, name, password string) *Room {
 }
 
 func (r *Room) notifyChange() {
-	if r.onChange != nil {
-		r.onChange()
+	if r.onChange == nil {
+		return
 	}
+	// Assíncrono: nunca notificar o hub sob r.mu (evita deadlock com ListPublic/PublicSnapshot).
+	go r.onChange()
 }
 
 // PublicSnapshot builds a hub card for this room (caller must ensure it is public).
@@ -344,7 +346,6 @@ func (r *Room) AddSubscriber(peerID string, sender Sender) (*Peer, error) {
 	}
 
 	log.Printf("subscriber joined room=%s peer=%s tracks=%d", r.ID, peerID, len(tracks))
-	r.notifyChange()
 
 	// Negotiate after unlock via goroutine so join response can go first.
 	if len(tracks) > 0 {
@@ -360,6 +361,9 @@ func (r *Room) AddSubscriber(peerID string, sender Sender) (*Peer, error) {
 			}
 		}()
 	}
+
+	// Notifica hub depois do unlock (via defer Unlock no return).
+	go r.notifyChange()
 
 	return peer, nil
 }
