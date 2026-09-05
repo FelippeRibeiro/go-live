@@ -1,0 +1,11 @@
+version: '2'
+sql:
+  - engine: 'postgresql'
+    queries: 'db/queries'
+    schema: 'db/schema'
+    gen:
+      go:
+        package: 'db'
+        out: 'internal/db'
+        emit_json_tags: true
+        json_tags_case_style: snake
