@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Teste — microfone via Socket.IO</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f1419;
+      --fg: #e7ecf1;
+      --muted: #8b9aab;
+      --accent: #3d9cf0;
+      --ok: #3ecf8e;
+      --bad: #f07178;
+      --panel: #1a222c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      display: grid;
+      place-items: center;
+      padding: 1.5rem;
+    }
+    main {
+      width: min(100%, 420px);
+      background: var(--panel);
+      border-radius: 12px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    h1 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 650;
+    }
+    p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.45;
+    }
+    button {
+      font: inherit;
+      font-weight: 600;
+      border: 0;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      cursor: pointer;
+      background: var(--accent);
+      color: #041018;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    button.stop {
+      background: var(--bad);
+      color: #fff;
+    }
+    .row {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .status {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .status.live { color: var(--ok); }
+    ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    li {
+      font-size: 0.85rem;
+      padding: 0.45rem 0.6rem;
+      background: #121820;
+      border-radius: 6px;
+      display: flex;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+    li span.id {
+      font-family: ui-monospace, monospace;
+      color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    label.vol {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    input[type="range"] { flex: 1; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Microfone compartilhado</h1>
+    <p>
+      Áudio do microfone enviado por Socket.IO (PCM). Sem WebRTC.
+      Abra esta página em duas abas/dispositivos na mesma rede.
+    </p>
+
+    <div class="row">
+      <button type="button" id="btn-start">Ligar microfone</button>
+      <button type="button" id="btn-stop" class="stop" hidden>Desligar</button>
+    </div>
+
+    <label class="vol">
+      Volume recebido
+      <input type="range" id="volume" min="0" max="1" step="0.01" value="1" />
+    </label>
+
+    <p id="status" class="status">Desconectado</p>
+    <p style="font-size:0.8rem">Participantes</p>
+    <ul id="peers"></ul>
+  </main>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const SAMPLE_RATE = 16000;
+    const FRAME_SAMPLES = 1280; // 80ms @ 16kHz
+    const btnStart = document.getElementById("btn-start");
+    const btnStop = document.getElementById("btn-stop");
+    const statusEl = document.getElementById("status");
+    const peersEl = document.getElementById("peers");
+    const volumeEl = document.getElementById("volume");
+
+    const socket = io({ transports: ["websocket"] });
+    const peerNames = new Map();
+    /** @type {Map<string, PeerPlayer>} */
+    const players = new Map();
+
+    let audioCtx = null;
+    let mediaStream = null;
+    let processor = null;
+    let sourceNode = null;
+    let muteGain = null;
+    let sendGain = 1;
+    let masterVolume = 1;
+
+    function setStatus(text, live = false) {
+      statusEl.textContent = text;
+      statusEl.classList.toggle("live", live);
+    }
+
+    function shortId(id) {
+      return id.slice(0, 8);
+    }
+
+    function renderPeers() {
+      peersEl.innerHTML = "";
+      if (peerNames.size === 0) {
+        const li = document.createElement("li");
+        li.textContent = "Ninguém além de você";
+        peersEl.appendChild(li);
+        return;
+      }
+      for (const id of peerNames.keys()) {
+        const li = document.createElement("li");
+        const left = document.createElement("span");
+        left.className = "id";
+        left.textContent = shortId(id);
+        const right = document.createElement("span");
+        right.textContent = players.has(id) ? "ouvindo" : "conectado";
+        li.append(left, right);
+        peersEl.appendChild(li);
+      }
+    }
+
+    class PeerPlayer {
+      constructor(id) {
+        this.id = id;
+        this.ctx = getPlaybackCtx();
+        this.nextTime = 0;
+        this.gain = this.ctx.createGain();
+        this.gain.gain.value = masterVolume;
+        this.gain.connect(this.ctx.destination);
+      }
+
+      setVolume(v) {
+        this.gain.gain.value = v;
+      }
+
+      enqueue(pcmInt16, sampleRate) {
+        const floats = new Float32Array(pcmInt16.length);
+        for (let i = 0; i < pcmInt16.length; i++) {
+          floats[i] = pcmInt16[i] / 32768;
+        }
+        const buffer = this.ctx.createBuffer(1, floats.length, sampleRate);
+        buffer.copyToChannel(floats, 0);
+
+        const src = this.ctx.createBufferSource();
+        src.buffer = buffer;
+        src.connect(this.gain);
+
+        const now = this.ctx.currentTime;
+        if (this.nextTime < now + 0.05) {
+          this.nextTime = now + 0.05;
+        }
+        src.start(this.nextTime);
+        this.nextTime += buffer.duration;
+      }
+
+      dispose() {
+        try { this.gain.disconnect(); } catch {}
+      }
+    }
+
+    function getPlaybackCtx() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)({
+          sampleRate: SAMPLE_RATE,
+        });
+      }
+      return audioCtx;
+    }
+
+    function floatToInt16(float32) {
+      const out = new Int16Array(float32.length);
+      for (let i = 0; i < float32.length; i++) {
+        const s = Math.max(-1, Math.min(1, float32[i]));
+        out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+      }
+      return out;
+    }
+
+    /** Downsample mono Float32 para SAMPLE_RATE */
+    function downsample(buffer, inRate) {
+      if (inRate === SAMPLE_RATE) return buffer;
+      const ratio = inRate / SAMPLE_RATE;
+      const newLen = Math.floor(buffer.length / ratio);
+      const result = new Float32Array(newLen);
+      for (let i = 0; i < newLen; i++) {
+        result[i] = buffer[Math.floor(i * ratio)];
+      }
+      return result;
+    }
+
+    async function startMic() {
+      btnStart.disabled = true;
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+          video: false,
+        });
+
+        const ctx = getPlaybackCtx();
+        if (ctx.state === "suspended") await ctx.resume();
+
+        sourceNode = ctx.createMediaStreamSource(mediaStream);
+        // ScriptProcessor é legado, mas nativo e simples para este teste
+        processor = ctx.createScriptProcessor(4096, 1, 1);
+        muteGain = ctx.createGain();
+        muteGain.gain.value = 0; // evita feedback local
+
+        let pending = new Float32Array(0);
+
+        processor.onaudioprocess = (ev) => {
+          const input = ev.inputBuffer.getChannelData(0);
+          const down = downsample(input, ctx.sampleRate);
+          const merged = new Float32Array(pending.length + down.length);
+          merged.set(pending);
+          merged.set(down, pending.length);
+          pending = merged;
+
+          while (pending.length >= FRAME_SAMPLES) {
+            const frame = pending.subarray(0, FRAME_SAMPLES);
+            pending = pending.subarray(FRAME_SAMPLES);
+            const pcm = floatToInt16(frame);
+            socket.emit("audio", {
+              sampleRate: SAMPLE_RATE,
+              channels: 1,
+              pcm: pcm.buffer,
+            });
+          }
+        };
+
+        sourceNode.connect(processor);
+        processor.connect(muteGain);
+        muteGain.connect(ctx.destination);
+
+        btnStart.hidden = true;
+        btnStop.hidden = false;
+        setStatus("Microfone ligado — transmitindo", true);
+      } catch (err) {
+        btnStart.disabled = false;
+        setStatus("Erro: " + (err.message || err));
+      }
+    }
+
+    function stopMic() {
+      if (processor) {
+        processor.onaudioprocess = null;
+        try { processor.disconnect(); } catch {}
+        processor = null;
+      }
+      if (sourceNode) {
+        try { sourceNode.disconnect(); } catch {}
+        sourceNode = null;
+      }
+      if (muteGain) {
+        try { muteGain.disconnect(); } catch {}
+        muteGain = null;
+      }
+      if (mediaStream) {
+        mediaStream.getTracks().forEach((t) => t.stop());
+        mediaStream = null;
+      }
+      btnStart.hidden = false;
+      btnStart.disabled = false;
+      btnStop.hidden = true;
+      setStatus("Conectado (microfone off)");
+    }
+
+    socket.on("connect", () => {
+      setStatus("Conectado (microfone off)");
+    });
+
+    socket.on("disconnect", () => {
+      stopMic();
+      setStatus("Desconectado");
+    });
+
+    socket.on("peers", (ids) => {
+      peerNames.clear();
+      for (const id of ids) peerNames.set(id, true);
+      renderPeers();
+    });
+
+    socket.on("peer-joined", ({ id }) => {
+      peerNames.set(id, true);
+      renderPeers();
+    });
+
+    socket.on("peer-left", ({ id }) => {
+      peerNames.delete(id);
+      const player = players.get(id);
+      if (player) {
+        player.dispose();
+        players.delete(id);
+      }
+      renderPeers();
+    });
+
+    socket.on("audio", ({ id, sampleRate, pcm }) => {
+      if (!pcm) return;
+      let player = players.get(id);
+      if (!player) {
+        player = new PeerPlayer(id);
+        player.setVolume(masterVolume);
+        players.set(id, player);
+        renderPeers();
+      }
+      const view = pcm instanceof ArrayBuffer
+        ? new Int16Array(pcm)
+        : new Int16Array(pcm.buffer || pcm);
+      player.enqueue(view, sampleRate || SAMPLE_RATE);
+    });
+
+    volumeEl.addEventListener("input", () => {
+      masterVolume = Number(volumeEl.value);
+      for (const p of players.values()) p.setVolume(masterVolume);
+    });
+
+    btnStart.addEventListener("click", startMic);
+    btnStop.addEventListener("click", stopMic);
+    renderPeers();
+  </script>
+</body>
+</html>
