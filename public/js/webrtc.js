@@ -9,6 +9,7 @@ const stageFrame = document.getElementById("stage-frame");
 const stageHint = document.getElementById("stage-hint");
 const btnShare = document.getElementById("btn-share");
 const btnStop = document.getElementById("btn-stop");
+const btnCopyLink = document.getElementById("btn-copy-link");
 const btnFullscreen = document.getElementById("btn-fullscreen");
 const shareHint = document.getElementById("share-hint");
 const statusEl = document.getElementById("room-status");
@@ -18,6 +19,7 @@ const roomNameEl = document.getElementById("room-name");
 const roleBadge = document.getElementById("role-badge");
 
 let currentRole = role;
+let copyLinkResetTimer = null;
 
 roomIdEl.textContent = roomId;
 
@@ -26,8 +28,46 @@ function updateRoleUI() {
   if (shareHint) {
     shareHint.textContent =
       currentRole === "publisher"
-        ? "Compartilhe o ID da sala com quem for assistir. Use ⛶ ou duplo clique para tela cheia."
+        ? "Use “Copiar live” para enviar o link. Use ⛶ ou duplo clique para tela cheia."
         : "Você pode transmitir se não houver live ativa. Use ⛶ ou duplo clique para tela cheia.";
+  }
+}
+
+function viewerShareURL() {
+  const q = new URLSearchParams({
+    room: roomId,
+    role: "subscriber",
+  });
+  if (password) q.set("password", password);
+  return `${location.origin}/room.html?${q.toString()}`;
+}
+
+async function copyLiveLink() {
+  const url = viewerShareURL();
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(url);
+    } else {
+      const ta = document.createElement("textarea");
+      ta.value = url;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+    }
+    if (btnCopyLink) {
+      btnCopyLink.textContent = "Copiado!";
+      clearTimeout(copyLinkResetTimer);
+      copyLinkResetTimer = setTimeout(() => {
+        btnCopyLink.textContent = "Copiar live";
+      }, 2000);
+    }
+  } catch (err) {
+    setError("Não foi possível copiar o link");
+    console.warn("copy failed", err);
   }
 }
 
@@ -463,5 +503,6 @@ stageFrame?.addEventListener("dblclick", toggleFullscreen);
 
 btnShare?.addEventListener("click", requestShare);
 btnStop?.addEventListener("click", stopShare);
+btnCopyLink?.addEventListener("click", copyLiveLink);
 
 connect();

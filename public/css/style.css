@@ -497,6 +497,11 @@ input:focus {
   letter-spacing: 0.04em;
 }
 
+.btn-copy-link {
+  padding: 0.25rem 0.55rem;
+  font-size: 0.75rem;
+}
+
 .badge {
   font-size: 0.75rem;
   font-weight: 600;
