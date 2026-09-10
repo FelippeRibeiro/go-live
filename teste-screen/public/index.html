@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Teste — telas via Socket.IO</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0f1419;
+        --fg: #e7ecf1;
+        --muted: #8b9aab;
+        --accent: #3d9cf0;
+        --bad: #f07178;
+        --panel: #1a222c;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+        padding: 1rem;
+      }
+      header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        align-items: center;
+        margin-bottom: 1rem;
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.1rem;
+        font-weight: 650;
+        flex: 1;
+      }
+      button {
+        font: inherit;
+        font-weight: 600;
+        border: 0;
+        border-radius: 8px;
+        padding: 0.55rem 0.9rem;
+        cursor: pointer;
+        background: var(--accent);
+        color: #041018;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      button.stop {
+        background: var(--bad);
+        color: #fff;
+      }
+      #status {
+        color: var(--muted);
+        font-size: 0.85rem;
+        width: 100%;
+      }
+      #grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 0.75rem;
+      }
+      .tile {
+        position: relative;
+        aspect-ratio: 16 / 9;
+        background: var(--panel);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .tile img,
+      .tile video {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        background: #000;
+        display: block;
+      }
+      .tile .label {
+        position: absolute;
+        left: 0.4rem;
+        bottom: 0.4rem;
+        font-size: 0.7rem;
+        font-family: ui-monospace, monospace;
+        background: rgba(0, 0, 0, 0.65);
+        padding: 0.15rem 0.4rem;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Telas compartilhadas</h1>
+      <button type="button" id="btn-start">Compartilhar tela</button>
+      <button type="button" id="btn-stop" class="stop" hidden>Parar</button>
+      <p id="status">Desconectado</p>
+    </header>
+
+    <div id="grid"></div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      const FPS = 60;
+      const MAX_WIDTH = 1920;
+      const JPEG_QUALITY = 0.55;
+
+      const grid = document.getElementById('grid');
+      const statusEl = document.getElementById('status');
+      const btnStart = document.getElementById('btn-start');
+      const btnStop = document.getElementById('btn-stop');
+
+      const socket = io({ transports: ['websocket'] });
+      /** @type {Map<string, HTMLElement>} */
+      const tiles = new Map();
+
+      let mediaStream = null;
+      let videoEl = null;
+      let canvas = null;
+      let ctx = null;
+      let timer = null;
+      let selfId = null;
+
+      function setStatus(t) {
+        statusEl.textContent = t;
+      }
+
+      function shortId(id) {
+        return (id || '?').slice(0, 8);
+      }
+
+      function ensureTile(id, isSelf) {
+        let tile = tiles.get(id);
+        if (tile) return tile;
+
+        tile = document.createElement('div');
+        tile.className = 'tile';
+        tile.dataset.id = id;
+
+        if (isSelf) {
+          const video = document.createElement('video');
+          video.autoplay = true;
+          video.muted = true;
+          video.playsInline = true;
+          tile.appendChild(video);
+        } else {
+          const img = document.createElement('img');
+          img.alt = 'tela remota';
+          tile.appendChild(img);
+        }
+
+        const label = document.createElement('span');
+        label.className = 'label';
+        label.textContent = isSelf ? shortId(id) + ' (você)' : shortId(id);
+        tile.appendChild(label);
+
+        tiles.set(id, tile);
+        grid.appendChild(tile);
+        return tile;
+      }
+
+      function removeTile(id) {
+        const tile = tiles.get(id);
+        if (!tile) return;
+        tile.remove();
+        tiles.delete(id);
+      }
+
+      function blobToArrayBuffer(blob) {
+        return blob.arrayBuffer();
+      }
+
+      async function captureLoop() {
+        if (!videoEl || !ctx || videoEl.videoWidth === 0) return;
+
+        const vw = videoEl.videoWidth;
+        const vh = videoEl.videoHeight;
+        const scale = Math.min(1, MAX_WIDTH / vw);
+        const w = Math.max(1, Math.round(vw * scale));
+        const h = Math.max(1, Math.round(vh * scale));
+
+        if (canvas.width !== w || canvas.height !== h) {
+          canvas.width = w;
+          canvas.height = h;
+        }
+
+        ctx.drawImage(videoEl, 0, 0, w, h);
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', JPEG_QUALITY));
+        if (!blob || !socket.connected) return;
+
+        const jpeg = await blobToArrayBuffer(blob);
+        socket.emit('frame', { jpeg });
+      }
+
+      async function startShare() {
+        btnStart.disabled = true;
+        try {
+          mediaStream = await navigator.mediaDevices.getDisplayMedia({
+            video: { frameRate: { ideal: FPS, max: 10 } },
+            audio: false,
+          });
+
+          const tile = ensureTile(selfId || socket.id, true);
+          videoEl = tile.querySelector('video');
+          videoEl.srcObject = mediaStream;
+
+          canvas = document.createElement('canvas');
+          ctx = canvas.getContext('2d', { alpha: false });
+
+          mediaStream.getVideoTracks()[0].addEventListener('ended', stopShare);
+
+          clearInterval(timer);
+          timer = setInterval(
+            () => {
+              captureLoop().catch(() => {});
+            },
+            Math.round(1000 / FPS),
+          );
+
+          btnStart.hidden = true;
+          btnStop.hidden = false;
+          setStatus('Transmitindo tela');
+        } catch (err) {
+          btnStart.disabled = false;
+          setStatus('Erro: ' + (err.message || err));
+        }
+      }
+
+      function stopShare() {
+        clearInterval(timer);
+        timer = null;
+        if (mediaStream) {
+          mediaStream.getTracks().forEach((t) => t.stop());
+          mediaStream = null;
+        }
+        if (selfId) removeTile(selfId);
+        videoEl = null;
+        canvas = null;
+        ctx = null;
+        btnStart.hidden = false;
+        btnStart.disabled = false;
+        btnStop.hidden = true;
+        setStatus(socket.connected ? 'Conectado (tela off)' : 'Desconectado');
+      }
+
+      socket.on('connect', () => {
+        selfId = socket.id;
+        setStatus('Conectado (tela off)');
+      });
+
+      socket.on('disconnect', () => {
+        stopShare();
+        for (const id of [...tiles.keys()]) {
+          if (id !== selfId) removeTile(id);
+        }
+        setStatus('Desconectado');
+      });
+
+      socket.on('peers', (ids) => {
+        for (const id of ids) ensureTile(id, false);
+      });
+
+      socket.on('peer-joined', ({ id }) => {
+        ensureTile(id, false);
+      });
+
+      socket.on('peer-left', ({ id }) => {
+        removeTile(id);
+      });
+
+      socket.on('frame', ({ id, jpeg }) => {
+        if (!id || !jpeg || id === selfId) return;
+        const tile = ensureTile(id, false);
+        const img = tile.querySelector('img');
+        const blob = new Blob([jpeg], { type: 'image/jpeg' });
+        const url = URL.createObjectURL(blob);
+        const prev = img.src;
+        img.onload = () => {
+          if (prev && prev.startsWith('blob:')) URL.revokeObjectURL(prev);
+        };
+        img.src = url;
+      });
+
+      btnStart.addEventListener('click', startShare);
+      btnStop.addEventListener('click', stopShare);
+    </script>
+  </body>
+</html>
