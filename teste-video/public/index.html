@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Transmissão de vídeo P2P</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f1419;
+      --fg: #e7ecf1;
+      --muted: #8b9aab;
+      --accent: #3d9cf0;
+      --panel: #1a222c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      padding: 1.25rem;
+    }
+    h1 { margin: 0 0 0.35rem; font-size: 1.25rem; }
+    p.lead { margin: 0 0 1.25rem; color: var(--muted); font-size: 0.9rem; }
+    .layout {
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: 1fr;
+    }
+    @media (min-width: 900px) {
+      .layout { grid-template-columns: 1fr 1fr; }
+    }
+    .panel {
+      background: var(--panel);
+      border-radius: 10px;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .panel h2 { margin: 0; font-size: 1rem; }
+    video {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      border-radius: 8px;
+      object-fit: contain;
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    button, label.file {
+      font: inherit;
+      font-weight: 600;
+      border: 0;
+      border-radius: 8px;
+      padding: 0.55rem 0.9rem;
+      cursor: pointer;
+      background: var(--accent);
+      color: #041018;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.secondary {
+      background: transparent;
+      color: var(--fg);
+      border: 1px solid #3a4654;
+    }
+    label.file input { display: none; }
+    #status { color: var(--muted); font-size: 0.85rem; }
+    #file-name { color: var(--muted); font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <h1>Transmissão de vídeo local (P2P)</h1>
+  <p class="lead">
+    Selecione um arquivo de vídeo, inicie a transmissão e abra outra aba nesta mesma URL para assistir.
+    A mídia vai direto entre navegadores (WebRTC); o servidor só faz sinalização.
+  </p>
+
+  <p id="status">Conectando…</p>
+
+  <div class="layout">
+    <section class="panel">
+      <h2>Transmissor</h2>
+      <video id="localVideo" playsinline controls muted></video>
+      <div class="row">
+        <label class="file">
+          Escolher arquivo
+          <input type="file" id="fileInput" accept="video/*" />
+        </label>
+        <button type="button" id="btnStart" disabled>Iniciar transmissão</button>
+        <button type="button" id="btnStop" class="secondary" disabled>Parar</button>
+      </div>
+      <span id="file-name">Nenhum arquivo selecionado</span>
+    </section>
+
+    <section class="panel">
+      <h2>Espectador</h2>
+      <video id="remoteVideo" playsinline autoplay controls></video>
+      <p class="lead" style="margin:0">
+        Se você não for o transmissor, o vídeo remoto aparece aqui automaticamente.
+      </p>
+    </section>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
