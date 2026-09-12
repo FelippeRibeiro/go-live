@@ -24,6 +24,7 @@ func main() {
 	mgr := room.NewManager()
 	sig := &signaling.Handler{Manager: mgr}
 	hub := signaling.NewHub(mgr)
+	fileHub := signaling.NewFileHub()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/rooms", func(w http.ResponseWriter, r *http.Request) {
@@ -55,6 +56,7 @@ func main() {
 	})
 	mux.HandleFunc("/ws", sig.ServeWS)
 	mux.HandleFunc("/ws/hub", hub.ServeWS)
+	mux.HandleFunc("/ws/file", fileHub.ServeWS)
 
 	publicDir := filepath.Join(".", "public")
 	fs := http.FileServer(http.Dir(publicDir))

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Arquivo (beta) — Janja lives</title>
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('go-live-theme');
+          document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/css/style.css?v=6" />
+  </head>
+  <body class="page-room page-file-beta">
+    <div class="atmosphere atmosphere-room" aria-hidden="true"></div>
+    <button type="button" id="theme-toggle" class="theme-toggle">Modo claro</button>
+
+    <header class="room-bar">
+      <a class="brand-mark brand-mark-sm" href="/">Janja lives</a>
+      <div class="room-meta">
+        <span>Transmissão de arquivo</span>
+        <span class="badge">Beta</span>
+      </div>
+      <a class="btn btn-ghost" href="/">Voltar</a>
+    </header>
+
+    <main class="file-beta-main">
+      <p id="status" class="status">Conectando…</p>
+
+      <div class="file-beta-grid">
+        <section class="file-beta-panel">
+          <h2>Transmissor</h2>
+          <video id="localVideo" playsinline controls muted></video>
+          <div class="file-beta-actions">
+            <label class="btn btn-secondary file-beta-file">
+              Escolher arquivo
+              <input type="file" id="fileInput" accept="video/*" hidden />
+            </label>
+            <button type="button" id="btnStart" class="btn btn-primary" disabled>Iniciar transmissão</button>
+            <button type="button" id="btnStop" class="btn btn-secondary" disabled>Parar</button>
+          </div>
+          <p id="file-name" class="host-hint">Nenhum arquivo selecionado</p>
+        </section>
+
+        <section class="file-beta-panel">
+          <h2>Espectador</h2>
+          <video id="remoteVideo" playsinline autoplay controls></video>
+          <!-- <p class="host-hint">Abra esta mesma URL em outra aba para assistir.</p> -->
+        </section>
+      </div>
+    </main>
+
+    <script type="module" src="/js/theme.js?v=3"></script>
+    <script type="module" src="/js/file-beta.js?v=1"></script>
+  </body>
+</html>

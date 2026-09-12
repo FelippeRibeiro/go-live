@@ -13,7 +13,13 @@ const statusEl = document.getElementById("status");
 let stream = null;
 /** @type {Map<string, RTCPeerConnection>} */
 const peerConnections = new Map();
+/** @type {Map<string, RTCIceCandidateInit[]>} */
+const pendingCandidates = new Map();
+/** @type {MediaStream | null} */
+let remoteStream = null;
 let isBroadcaster = false;
+/** socket id do broadcaster ao qual este espectador está ligado */
+let connectedBroadcasterId = null;
 
 function setStatus(text) {
   statusEl.textContent = text;
@@ -25,6 +31,98 @@ function captureFromLocalVideo() {
   throw new Error("captureStream não suportado neste navegador");
 }
 
+function clearRemoteVideo() {
+  if (remoteVideo.srcObject) {
+    const s = remoteVideo.srcObject;
+    if (s instanceof MediaStream) {
+      s.getTracks().forEach((t) => t.stop());
+    }
+  }
+  remoteVideo.removeAttribute("src");
+  remoteVideo.srcObject = null;
+  remoteVideo.load();
+  remoteStream = null;
+  connectedBroadcasterId = null;
+}
+
+function closePeer(peerId) {
+  const pc = peerConnections.get(peerId);
+  if (pc) {
+    pc.onicecandidate = null;
+    pc.ontrack = null;
+    pc.onconnectionstatechange = null;
+    try {
+      pc.close();
+    } catch {
+      /* ignore */
+    }
+    peerConnections.delete(peerId);
+  }
+  pendingCandidates.delete(peerId);
+}
+
+function closeAllPeers() {
+  for (const id of [...peerConnections.keys()]) {
+    closePeer(id);
+  }
+}
+
+function queueOrAddCandidate(peerId, candidate) {
+  const pc = peerConnections.get(peerId);
+  if (!pc) return;
+  if (!pc.remoteDescription) {
+    const list = pendingCandidates.get(peerId) || [];
+    list.push(candidate);
+    pendingCandidates.set(peerId, list);
+    return;
+  }
+  return pc.addIceCandidate(candidate);
+}
+
+async function flushCandidates(peerId) {
+  const pc = peerConnections.get(peerId);
+  const list = pendingCandidates.get(peerId) || [];
+  pendingCandidates.delete(peerId);
+  if (!pc) return;
+  for (const c of list) {
+    try {
+      await pc.addIceCandidate(c);
+    } catch (err) {
+      console.warn("ICE flush error", err);
+    }
+  }
+}
+
+function createPeerConnection(peerId) {
+  closePeer(peerId);
+
+  const pc = new RTCPeerConnection({ iceServers });
+
+  pc.onicecandidate = (event) => {
+    if (event.candidate) {
+      socket.emit("candidate", peerId, event.candidate.toJSON());
+    }
+  };
+
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+      closePeer(peerId);
+    }
+  };
+
+  peerConnections.set(peerId, pc);
+  return pc;
+}
+
+/** Clona tracks para cada peer — captureStream não escala bem reutilizando o mesmo track. */
+function addClonedTracks(pc) {
+  if (!stream) return;
+  for (const track of stream.getTracks()) {
+    const cloned = track.clone();
+    pc.addTrack(cloned, stream);
+  }
+}
+
 async function startBroadcast() {
   if (!localVideo.src) {
     setStatus("Selecione um arquivo de vídeo primeiro");
@@ -32,23 +130,35 @@ async function startBroadcast() {
   }
 
   try {
+    clearRemoteVideo();
+    closeAllPeers();
+
     await localVideo.play();
     stream = captureFromLocalVideo();
     isBroadcaster = true;
     socket.emit("broadcaster");
+    // Espectadores já na sala pedem de novo via evento "broadcaster"
     btnStart.disabled = true;
     btnStop.disabled = false;
     fileInput.disabled = true;
-    setStatus("Transmitindo — abra outra aba para assistir");
+    setStatus("Transmitindo — outros podem abrir esta URL para assistir");
   } catch (err) {
+    isBroadcaster = false;
+    stream = null;
     setStatus("Erro ao iniciar: " + (err.message || err));
   }
 }
 
 function stopBroadcast() {
-  for (const [id, pc] of peerConnections) {
-    pc.close();
-    peerConnections.delete(id);
+  closeAllPeers();
+  if (stream) {
+    stream.getTracks().forEach((t) => {
+      try {
+        t.stop();
+      } catch {
+        /* ignore */
+      }
+    });
   }
   stream = null;
   isBroadcaster = false;
@@ -56,27 +166,9 @@ function stopBroadcast() {
   btnStart.disabled = !localVideo.src;
   btnStop.disabled = true;
   fileInput.disabled = false;
+  // Re-registra como possível espectador
+  socket.emit("watcher");
   setStatus("Transmissão parada");
-}
-
-function createPeerConnection(peerId) {
-  const pc = new RTCPeerConnection({ iceServers });
-
-  pc.onicecandidate = (event) => {
-    if (event.candidate) {
-      socket.emit("candidate", peerId, event.candidate);
-    }
-  };
-
-  pc.onconnectionstatechange = () => {
-    if (pc.connectionState === "failed" || pc.connectionState === "closed") {
-      pc.close();
-      peerConnections.delete(peerId);
-    }
-  };
-
-  peerConnections.set(peerId, pc);
-  return pc;
 }
 
 fileInput.addEventListener("change", () => {
@@ -94,36 +186,47 @@ fileInput.addEventListener("change", () => {
 btnStart.addEventListener("click", startBroadcast);
 btnStop.addEventListener("click", stopBroadcast);
 
+window.addEventListener("beforeunload", () => {
+  closeAllPeers();
+});
+
 socket.on("connect", () => {
   setStatus("Conectado — escolha um arquivo ou aguarde uma transmissão");
-  // Espectadores pedem para assistir; se já houver broadcaster, entram na fila.
   if (!isBroadcaster) socket.emit("watcher");
 });
 
 socket.on("broadcaster", () => {
-  if (!isBroadcaster) {
-    socket.emit("watcher");
-    setStatus("Transmissor disponível — conectando…");
-  }
+  if (isBroadcaster) return;
+  clearRemoteVideo();
+  closeAllPeers();
+  socket.emit("watcher");
+  setStatus("Transmissor disponível — conectando…");
 });
 
-// Broadcaster: novo espectador
+socket.on("forceStop", () => {
+  if (!isBroadcaster) return;
+  stopBroadcast();
+  setStatus("Outro transmissor assumiu a sala");
+});
+
+// Broadcaster: novo espectador (N peers)
 socket.on("watcher", async (watcherId) => {
   if (!isBroadcaster || !stream) return;
 
   const pc = createPeerConnection(watcherId);
-  for (const track of stream.getTracks()) {
-    pc.addTrack(track, stream);
-  }
+  addClonedTracks(pc);
 
   try {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-    socket.emit("offer", watcherId, pc.localDescription);
+    socket.emit("offer", watcherId, {
+      type: pc.localDescription.type,
+      sdp: pc.localDescription.sdp,
+    });
+    setStatus(`Transmitindo para ${peerConnections.size} espectador(es)`);
   } catch (err) {
     console.warn("offer failed", err);
-    pc.close();
-    peerConnections.delete(watcherId);
+    closePeer(watcherId);
   }
 });
 
@@ -131,58 +234,81 @@ socket.on("watcher", async (watcherId) => {
 socket.on("offer", async (broadcasterSocketId, description) => {
   if (isBroadcaster) return;
 
-  let pc = peerConnections.get(broadcasterSocketId);
-  if (pc) {
-    pc.close();
-    peerConnections.delete(broadcasterSocketId);
-  }
+  clearRemoteVideo();
+  const pc = createPeerConnection(broadcasterSocketId);
+  connectedBroadcasterId = broadcasterSocketId;
+  remoteStream = new MediaStream();
+  remoteVideo.srcObject = remoteStream;
 
-  pc = createPeerConnection(broadcasterSocketId);
   pc.ontrack = (event) => {
-    remoteVideo.srcObject = event.streams[0] || new MediaStream([event.track]);
+    // Acumula tracks (áudio + vídeo) no mesmo MediaStream — evita “fragmentos”
+    if (event.streams?.[0]) {
+      for (const track of event.streams[0].getTracks()) {
+        if (!remoteStream.getTracks().some((t) => t.id === track.id)) {
+          remoteStream.addTrack(track);
+        }
+      }
+    } else if (event.track) {
+      if (!remoteStream.getTracks().some((t) => t.id === event.track.id)) {
+        remoteStream.addTrack(event.track);
+      }
+    }
     remoteVideo.play().catch(() => {});
     setStatus("Recebendo transmissão");
   };
 
   try {
     await pc.setRemoteDescription(description);
+    await flushCandidates(broadcasterSocketId);
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
-    socket.emit("answer", broadcasterSocketId, pc.localDescription);
+    socket.emit("answer", broadcasterSocketId, {
+      type: pc.localDescription.type,
+      sdp: pc.localDescription.sdp,
+    });
   } catch (err) {
     console.warn("answer failed", err);
+    clearRemoteVideo();
+    closePeer(broadcasterSocketId);
   }
 });
 
-// Broadcaster: recebe answer
 socket.on("answer", async (watcherId, description) => {
   const pc = peerConnections.get(watcherId);
   if (!pc) return;
   try {
     await pc.setRemoteDescription(description);
+    await flushCandidates(watcherId);
   } catch (err) {
     console.warn("setRemoteDescription answer failed", err);
   }
 });
 
 socket.on("candidate", async (peerId, candidate) => {
-  const pc = peerConnections.get(peerId);
-  if (!pc) return;
   try {
-    await pc.addIceCandidate(candidate);
+    await queueOrAddCandidate(peerId, candidate);
   } catch (err) {
     console.warn("ICE candidate error", err);
   }
 });
 
+// Espectador saiu — só o broadcaster fecha aquele PC
 socket.on("disconnectPeer", (peerId) => {
-  const pc = peerConnections.get(peerId);
-  if (pc) {
-    pc.close();
-    peerConnections.delete(peerId);
+  closePeer(peerId);
+  if (isBroadcaster) {
+    setStatus(
+      peerConnections.size
+        ? `Transmitindo para ${peerConnections.size} espectador(es)`
+        : "Transmitindo — aguardando espectadores"
+    );
   }
-  if (!isBroadcaster && remoteVideo.srcObject) {
-    remoteVideo.srcObject = null;
-    setStatus("Transmissor saiu");
-  }
+});
+
+// Broadcaster saiu / refresh — limpa vídeo remoto de todo mundo
+socket.on("broadcasterLeft", () => {
+  if (isBroadcaster) return;
+  closeAllPeers();
+  clearRemoteVideo();
+  setStatus("Transmissor saiu — aguardando nova transmissão");
+  socket.emit("watcher");
 });
