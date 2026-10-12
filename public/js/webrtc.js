@@ -1,22 +1,22 @@
 const params = new URLSearchParams(window.location.search);
-const roomId = params.get("room") || "";
-const role = params.get("role") || "subscriber";
-const password = params.get("password") || "";
+const roomId = params.get('room') || '';
+const role = params.get('role') || 'subscriber';
+const password = params.get('password') || '';
 
-const preview = document.getElementById("preview");
-const remote = document.getElementById("remote");
-const stageFrame = document.getElementById("stage-frame");
-const stageHint = document.getElementById("stage-hint");
-const btnShare = document.getElementById("btn-share");
-const btnStop = document.getElementById("btn-stop");
-const btnCopyLink = document.getElementById("btn-copy-link");
-const btnFullscreen = document.getElementById("btn-fullscreen");
-const shareHint = document.getElementById("share-hint");
-const statusEl = document.getElementById("room-status");
-const errorEl = document.getElementById("room-error");
-const roomIdEl = document.getElementById("room-id");
-const roomNameEl = document.getElementById("room-name");
-const roleBadge = document.getElementById("role-badge");
+const preview = document.getElementById('preview');
+const remote = document.getElementById('remote');
+const stageFrame = document.getElementById('stage-frame');
+const stageHint = document.getElementById('stage-hint');
+const btnShare = document.getElementById('btn-share');
+const btnStop = document.getElementById('btn-stop');
+const btnCopyLink = document.getElementById('btn-copy-link');
+const btnFullscreen = document.getElementById('btn-fullscreen');
+const shareHint = document.getElementById('share-hint');
+const statusEl = document.getElementById('room-status');
+const errorEl = document.getElementById('room-error');
+const roomIdEl = document.getElementById('room-id');
+const roomNameEl = document.getElementById('room-name');
+const roleBadge = document.getElementById('role-badge');
 
 let currentRole = role;
 let copyLinkResetTimer = null;
@@ -24,21 +24,21 @@ let copyLinkResetTimer = null;
 roomIdEl.textContent = roomId;
 
 function updateRoleUI() {
-  roleBadge.textContent = currentRole === "publisher" ? "Host" : "Espectador";
+  roleBadge.textContent = currentRole === 'publisher' ? 'Host' : 'Espectador';
   if (shareHint) {
     shareHint.textContent =
-      currentRole === "publisher"
-        ? "Use “Copiar live” para enviar o link. Use ⛶ ou duplo clique para tela cheia."
-        : "Você pode transmitir se não houver live ativa. Use ⛶ ou duplo clique para tela cheia.";
+      currentRole === 'publisher'
+        ? 'Use “Copiar live” para enviar o link. Use ⛶ ou duplo clique para tela cheia.'
+        : 'Você pode transmitir se não houver live ativa. Use ⛶ ou duplo clique para tela cheia.';
   }
 }
 
 function viewerShareURL() {
   const q = new URLSearchParams({
     room: roomId,
-    role: "subscriber",
+    role: 'subscriber',
   });
-  if (password) q.set("password", password);
+  if (password) q.set('password', password);
   return `${location.origin}/room.html?${q.toString()}`;
 }
 
@@ -48,51 +48,51 @@ async function copyLiveLink() {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(url);
     } else {
-      const ta = document.createElement("textarea");
+      const ta = document.createElement('textarea');
       ta.value = url;
-      ta.setAttribute("readonly", "");
-      ta.style.position = "fixed";
-      ta.style.left = "-9999px";
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
       document.body.appendChild(ta);
       ta.select();
-      document.execCommand("copy");
+      document.execCommand('copy');
       ta.remove();
     }
     if (btnCopyLink) {
-      btnCopyLink.textContent = "Copiado!";
+      btnCopyLink.textContent = 'Copiado!';
       clearTimeout(copyLinkResetTimer);
       copyLinkResetTimer = setTimeout(() => {
-        btnCopyLink.textContent = "Copiar live";
+        btnCopyLink.textContent = 'Copiar live';
       }, 2000);
     }
   } catch (err) {
-    setError("Não foi possível copiar o link");
-    console.warn("copy failed", err);
+    setError('Não foi possível copiar o link');
+    console.warn('copy failed', err);
   }
 }
 
 updateRoleUI();
 
 function setStatus(msg) {
-  statusEl.textContent = msg || "";
+  statusEl.textContent = msg || '';
 }
 
 function setError(msg) {
   errorEl.hidden = !msg;
-  errorEl.textContent = msg || "";
+  errorEl.textContent = msg || '';
 }
 
 function setHint(visible, text) {
   if (text) stageHint.textContent = text;
-  stageHint.style.display = visible ? "grid" : "none";
+  stageHint.style.display = visible ? 'grid' : 'none';
 }
 
 if (!roomId || !/^[a-zA-Z0-9-]+$/.test(roomId)) {
-  window.location.replace("/?missing=1");
-  throw new Error("invalid room");
+  window.location.replace('/?missing=1');
+  throw new Error('invalid room');
 }
 
-const iceServers = [{ urls: "stun:stun.l.google.com:19302" }];
+const iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
 
 /** Bitrate alto para tela local (8 Mbps) — o browser adapta se a rede não aguentar. */
 const VIDEO_MAX_BITRATE = 8_000_000;
@@ -106,7 +106,7 @@ let publishRequestPending = false;
 const pendingCandidates = [];
 
 function wsURL() {
-  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${proto}//${location.host}/ws`;
 }
 
@@ -123,7 +123,7 @@ async function ensurePC() {
   pc.onicecandidate = (ev) => {
     if (ev.candidate) {
       send({
-        action: "candidate",
+        action: 'candidate',
         candidate: {
           candidate: ev.candidate.candidate,
           sdpMid: ev.candidate.sdpMid,
@@ -152,7 +152,7 @@ async function ensurePC() {
     stream.addTrack(ev.track);
     remote.srcObject = stream;
     setHint(false);
-    setStatus("Recebendo transmissão");
+    setStatus('Recebendo transmissão');
     remote.play().catch(() => {});
   };
 
@@ -166,7 +166,7 @@ async function flushCandidates() {
     try {
       await pc.addIceCandidate(c);
     } catch (err) {
-      console.warn("ICE candidate error", err);
+      console.warn('ICE candidate error', err);
     }
   }
 }
@@ -181,16 +181,16 @@ async function handleOffer(sdp) {
   remote.srcObject = null;
 
   const peer = await ensurePC();
-  await peer.setRemoteDescription({ type: "offer", sdp });
+  await peer.setRemoteDescription({ type: 'offer', sdp });
   await flushCandidates();
   const answer = await peer.createAnswer();
   await peer.setLocalDescription(answer);
-  send({ action: "answer", sdp: answer.sdp, type: "answer" });
+  send({ action: 'answer', sdp: answer.sdp, type: 'answer' });
 }
 
 async function handleAnswer(sdp) {
   if (!pc) return;
-  await pc.setRemoteDescription({ type: "answer", sdp });
+  await pc.setRemoteDescription({ type: 'answer', sdp });
   await flushCandidates();
 }
 
@@ -207,17 +207,17 @@ async function handleCandidate(candidate) {
   try {
     await pc.addIceCandidate(init);
   } catch (err) {
-    console.warn("ICE candidate error", err);
+    console.warn('ICE candidate error', err);
   }
 }
 
 function connect() {
-  setStatus("Conectando…");
+  setStatus('Conectando…');
   ws = new WebSocket(wsURL());
 
   ws.onopen = () => {
     send({
-      action: "join",
+      action: 'join',
       room_id: roomId,
       password,
       role,
@@ -233,83 +233,76 @@ function connect() {
     }
 
     switch (msg.action) {
-      case "joined":
-        roomNameEl.textContent = msg.name || "Sala";
+      case 'joined':
+        roomNameEl.textContent = msg.name || 'Sala';
         currentRole = msg.role || currentRole;
         updateRoleUI();
-        setStatus(
-          currentRole === "publisher"
-            ? "Pronto. Clique em Compartilhar tela."
-            : "Na sala. Aguardando transmissão…"
-        );
-        if (currentRole === "subscriber") setHint(true, "Aguardando transmissão…");
+        setStatus(currentRole === 'publisher' ? 'Pronto. Clique em Compartilhar tela.' : 'Na sala. Aguardando transmissão…');
+        if (currentRole === 'subscriber') setHint(true, 'Aguardando transmissão…');
         break;
 
-      case "offer":
+      case 'offer':
         await handleOffer(msg.sdp);
         break;
 
-      case "answer":
+      case 'answer':
         await handleAnswer(msg.sdp);
         break;
 
-      case "candidate":
+      case 'candidate':
         if (msg.candidate) await handleCandidate(msg.candidate);
         break;
 
-      case "ended":
-        setHint(true, "Aguardando transmissão…");
+      case 'ended':
+        setHint(true, 'Aguardando transmissão…');
         setStatus(
-          currentRole === "publisher"
-            ? "Pronto. Clique em Compartilhar tela."
-            : msg.message === "stream stopped"
-              ? "Transmissão pausada — aguardando o host…"
-              : "Host saiu. A sala continua aberta."
+          currentRole === 'publisher' ? 'Pronto. Clique em Compartilhar tela.' : msg.message === 'stream stopped' ? 'Transmissão pausada — aguardando o host…' : 'Host saiu. A sala continua aberta.',
         );
         clearRemoteMedia();
         break;
 
-      case "stopped":
-        setHint(true, "Compartilhamento parado");
-        setStatus("Pronto. Clique em Compartilhar tela.");
+      case 'stopped':
+        setHint(true, 'Compartilhamento parado');
+        setStatus('Pronto. Clique em Compartilhar tela.');
         break;
 
-      case "live_active":
+      case 'live_active':
         publishRequestPending = false;
-        alert(msg.message || "Já existe uma transmissão ativa nesta sala.");
-        setStatus("Transmissão ativa — aguarde para transmitir.");
+        alert(msg.message || 'Já existe uma transmissão ativa nesta sala.');
+        setStatus('Transmissão ativa — aguarde para transmitir.');
         break;
 
-      case "publish_ok":
-        currentRole = "publisher";
+      case 'publish_ok':
+        currentRole = 'publisher';
         updateRoleUI();
         publishRequestPending = false;
         await startShare();
         break;
 
-      case "error":
+      case 'error':
         publishRequestPending = false;
-        if (
-          msg.message === "room not found" ||
-          msg.message === "invalid room_id"
-        ) {
-          window.location.replace("/?missing=1");
+        if (msg.message === 'room not found' || msg.message === 'invalid room_id') {
+          window.location.replace('/?missing=1');
+          return;
+        }
+        if (msg.message === 'publisher already connected') {
+          window.location.replace(`${location.origin}/room.html?room=${roomId}&role=subscriber`);
           return;
         }
         if (msg.message && (/host/i.test(msg.message) || /publisher/i.test(msg.message))) {
           alert(msg.message);
         }
-        setError(msg.message || "Erro de sinalização");
+        setError(msg.message || 'Erro de sinalização');
         break;
     }
   };
 
   ws.onclose = () => {
-    setStatus("Desconectado do servidor");
+    setStatus('Desconectado do servidor');
   };
 
   ws.onerror = () => {
-    setError("Falha na conexão WebSocket");
+    setError('Falha na conexão WebSocket');
   };
 }
 
@@ -342,7 +335,7 @@ function clearLocalMedia() {
 }
 
 async function tuneVideoSender(peer) {
-  const sender = peer.getSenders().find((s) => s.track?.kind === "video");
+  const sender = peer.getSenders().find((s) => s.track?.kind === 'video');
   if (!sender) return;
   const params = sender.getParameters();
   if (!params.encodings || params.encodings.length === 0) {
@@ -350,11 +343,11 @@ async function tuneVideoSender(peer) {
   }
   params.encodings[0].maxBitrate = VIDEO_MAX_BITRATE;
   params.encodings[0].maxFramerate = VIDEO_MAX_FRAMERATE;
-  params.degradationPreference = "maintain-resolution";
+  params.degradationPreference = 'maintain-resolution';
   try {
     await sender.setParameters(params);
   } catch (err) {
-    console.warn("setParameters failed", err);
+    console.warn('setParameters failed', err);
   }
 }
 
@@ -372,13 +365,13 @@ async function captureDisplayWithAudio() {
       autoGainControl: false,
       sampleRate: 48000,
     },
-    systemAudio: "include",
-    selfBrowserSurface: "exclude",
+    systemAudio: 'include',
+    selfBrowserSurface: 'exclude',
   });
 
   const videoTrack = displayStream.getVideoTracks()[0];
   if (videoTrack) {
-    videoTrack.contentHint = "detail";
+    videoTrack.contentHint = 'detail';
   }
 
   if (displayStream.getAudioTracks().length === 0) {
@@ -394,9 +387,9 @@ async function captureDisplayWithAudio() {
       for (const t of micStream.getAudioTracks()) {
         displayStream.addTrack(t);
       }
-      setStatus("Transmitindo (áudio via microfone — marque “Compartilhar áudio” no diálogo se quiser áudio do sistema)");
+      setStatus('Transmitindo (áudio via microfone — marque “Compartilhar áudio” no diálogo se quiser áudio do sistema)');
     } catch {
-      setStatus("Transmitindo sem áudio (navegador não liberou captura de som)");
+      setStatus('Transmitindo sem áudio (navegador não liberou captura de som)');
     }
   }
 
@@ -404,7 +397,7 @@ async function captureDisplayWithAudio() {
 }
 
 async function startShare() {
-  setError("");
+  setError('');
   try {
     if (pc) {
       pc.close();
@@ -424,7 +417,7 @@ async function startShare() {
     for (const track of stream.getTracks()) {
       peer.addTrack(track, stream);
       track.onended = () => {
-        if (track.kind === "video") stopShare();
+        if (track.kind === 'video') stopShare();
       };
     }
 
@@ -432,15 +425,15 @@ async function startShare() {
 
     const offer = await peer.createOffer();
     await peer.setLocalDescription(offer);
-    send({ action: "offer", sdp: offer.sdp, type: "offer" });
+    send({ action: 'offer', sdp: offer.sdp, type: 'offer' });
 
     btnShare.hidden = true;
     btnStop.hidden = false;
-    if (!statusEl.textContent.includes("áudio")) {
-      setStatus("Transmitindo");
+    if (!statusEl.textContent.includes('áudio')) {
+      setStatus('Transmitindo');
     }
   } catch (err) {
-    setError(err.message || "Não foi possível compartilhar a tela");
+    setError(err.message || 'Não foi possível compartilhar a tela');
     clearLocalMedia();
     btnShare.hidden = false;
     btnStop.hidden = true;
@@ -448,27 +441,27 @@ async function startShare() {
 }
 
 function requestShare() {
-  setError("");
-  if (currentRole === "publisher") {
+  setError('');
+  if (currentRole === 'publisher') {
     startShare();
     return;
   }
   if (publishRequestPending) return;
   publishRequestPending = true;
-  setStatus("Verificando se há transmissão ativa…");
-  send({ action: "request_publish" });
+  setStatus('Verificando se há transmissão ativa…');
+  send({ action: 'request_publish' });
 }
 
 function stopShare() {
-  send({ action: "stop" });
+  send({ action: 'stop' });
   clearLocalMedia();
   btnShare.hidden = false;
   btnStop.hidden = true;
-  setHint(true, "Compartilhamento parado");
-  setStatus("Pronto. Clique em Compartilhar tela.");
+  setHint(true, 'Compartilhamento parado');
+  setStatus('Pronto. Clique em Compartilhar tela.');
 }
 
-remote?.addEventListener("click", () => {
+remote?.addEventListener('click', () => {
   remote.muted = false;
   remote.play().catch(() => {});
 });
@@ -490,19 +483,19 @@ async function toggleFullscreen() {
       el.webkitRequestFullscreen();
     }
   } catch (err) {
-    console.warn("fullscreen failed", err);
+    console.warn('fullscreen failed', err);
   }
 }
 
-btnFullscreen?.addEventListener("click", (e) => {
+btnFullscreen?.addEventListener('click', (e) => {
   e.stopPropagation();
   toggleFullscreen();
 });
 
-stageFrame?.addEventListener("dblclick", toggleFullscreen);
+stageFrame?.addEventListener('dblclick', toggleFullscreen);
 
-btnShare?.addEventListener("click", requestShare);
-btnStop?.addEventListener("click", stopShare);
-btnCopyLink?.addEventListener("click", copyLiveLink);
+btnShare?.addEventListener('click', requestShare);
+btnStop?.addEventListener('click', stopShare);
+btnCopyLink?.addEventListener('click', copyLiveLink);
 
 connect();
