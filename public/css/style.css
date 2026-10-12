@@ -368,6 +368,57 @@ label em {
   opacity: 0.75;
 }
 
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.toggle-label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.toggle {
+  position: relative;
+  width: 2.75rem;
+  height: 1.55rem;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--glass);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.2s var(--ease), border-color 0.2s;
+}
+
+.toggle-knob {
+  position: absolute;
+  top: 0.15rem;
+  left: 0.15rem;
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 50%;
+  background: var(--ink-soft);
+  transition: transform 0.2s var(--ease), background 0.2s;
+}
+
+.toggle[aria-checked="true"] {
+  background: var(--accent);
+  border-color: var(--accent-deep);
+}
+
+.toggle[aria-checked="true"] .toggle-knob {
+  transform: translateX(1.15rem);
+  background: #041112;
+}
+
+[data-theme="light"] .toggle[aria-checked="true"] .toggle-knob {
+  background: #fff;
+}
+
 input {
   font: inherit;
   font-size: 1rem;

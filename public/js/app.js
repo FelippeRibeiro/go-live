@@ -4,11 +4,35 @@ const errorEl = document.getElementById("home-error");
 const hubGrid = document.getElementById("hub-grid");
 const hubEmpty = document.getElementById("hub-empty");
 const hubStatus = document.getElementById("hub-status");
+const privateToggle = document.getElementById("private-toggle");
+const passwordField = document.getElementById("password-field");
+const createPassword = document.getElementById("create-password");
 
 function showError(msg) {
   errorEl.hidden = !msg;
   errorEl.textContent = msg || "";
 }
+
+function isPrivateRoom() {
+  return privateToggle?.getAttribute("aria-checked") === "true";
+}
+
+function syncPrivateToggle() {
+  const on = isPrivateRoom();
+  if (passwordField) passwordField.hidden = !on;
+  if (createPassword) {
+    createPassword.required = on;
+    if (!on) createPassword.value = "";
+  }
+}
+
+privateToggle?.addEventListener("click", () => {
+  const next = !isPrivateRoom();
+  privateToggle.setAttribute("aria-checked", next ? "true" : "false");
+  syncPrivateToggle();
+});
+
+syncPrivateToggle();
 
 // Feedback ao cair na home porque a sala não existia (ou ID inválido).
 if (new URLSearchParams(location.search).get("missing") === "1") {
@@ -114,7 +138,19 @@ createForm?.addEventListener("submit", async (e) => {
   showError("");
   const fd = new FormData(createForm);
   const name = String(fd.get("name") || "").trim();
-  const password = String(fd.get("password") || "");
+  const privateRoom = isPrivateRoom();
+  const password = privateRoom ? String(fd.get("password") || "").trim() : "";
+
+  if (privateRoom && !password) {
+    creatingRoom = false;
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Criar e transmitir";
+    }
+    showError("Sala privada exige uma senha.");
+    createPassword?.focus();
+    return;
+  }
 
   try {
     const res = await fetch("/api/rooms", {

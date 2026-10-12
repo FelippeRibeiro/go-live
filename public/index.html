@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/css/style.css?v=6" />
+  <link rel="stylesheet" href="/css/style.css?v=7" />
 </head>
 <body class="page-home">
   <div class="atmosphere" aria-hidden="true"></div>
@@ -46,9 +46,23 @@
           <span>Nome</span>
           <input type="text" name="name" placeholder="Minha transmissão" maxlength="64" />
         </label>
-        <label>
-          <span>Senha <em>(opcional)</em></span>
-          <input type="password" name="password" placeholder="Deixe vazio para sala pública" autocomplete="new-password" />
+        <div class="toggle-row">
+          <span class="toggle-label" id="private-label">Sala privada</span>
+          <button
+            type="button"
+            id="private-toggle"
+            class="toggle"
+            role="switch"
+            aria-checked="false"
+            aria-labelledby="private-label"
+            title="Desligado = pública · Ligado = exige senha"
+          >
+            <span class="toggle-knob" aria-hidden="true"></span>
+          </button>
+        </div>
+        <label id="password-field" hidden>
+          <span>Senha</span>
+          <input type="password" name="password" id="create-password" placeholder="Senha para entrar na sala" autocomplete="new-password" />
         </label>
         <button type="submit" class="btn btn-primary">Criar e transmitir</button>
       </form>
@@ -78,6 +92,6 @@
   </main>
 
   <script type="module" src="/js/theme.js?v=3"></script>
-  <script type="module" src="/js/app.js?v=5"></script>
+  <script type="module" src="/js/app.js?v=7"></script>
 </body>
 </html>
