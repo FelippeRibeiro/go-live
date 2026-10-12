@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -43,7 +44,11 @@ func main() {
 				http.Error(w, "invalid json", http.StatusBadRequest)
 				return
 			}
-			res, err := mgr.Create(room.CreateRoomInput{Name: body.Name, Password: body.Password})
+			res, err := mgr.Create(room.CreateRoomInput{
+				Name:      body.Name,
+				Password:  body.Password,
+				CreatorIP: clientIP(r),
+			})
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -66,6 +71,25 @@ func main() {
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func clientIP(r *http.Request) string {
+	// Confia no primeiro hop de X-Forwarded-For quando atrás de proxy/reverse-proxy.
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		ip := strings.TrimSpace(parts[0])
+		if ip != "" {
+			return ip
+		}
+	}
+	if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" {
+		return xri
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
 
 func noCache(next http.Handler) http.Handler {

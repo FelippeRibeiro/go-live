@@ -8,6 +8,7 @@ import (
 	"log"
 	"regexp"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -35,12 +36,16 @@ type PublicRoom struct {
 type Manager struct {
 	mu       sync.RWMutex
 	rooms    map[string]*Room
+	byIP     map[string]string // creator IP -> room id (1 sala por IP)
 	onChange func()
 }
 
 // NewManager creates an empty room manager.
 func NewManager() *Manager {
-	return &Manager{rooms: make(map[string]*Room)}
+	return &Manager{
+		rooms: make(map[string]*Room),
+		byIP:  make(map[string]string),
+	}
 }
 
 // SetOnChange registers a callback fired when the public hub list may change.
@@ -62,8 +67,9 @@ func (m *Manager) notifyChange() {
 
 // CreateRoomInput is the payload for creating a room.
 type CreateRoomInput struct {
-	Name     string
-	Password string
+	Name      string
+	Password  string
+	CreatorIP string
 }
 
 // CreateRoomResult is returned after a successful create.
@@ -73,6 +79,7 @@ type CreateRoomResult struct {
 }
 
 // Create allocates a new room with a unique id.
+// Cada IP só pode ter 1 sala; criar outra remove a anterior desse IP.
 func (m *Manager) Create(in CreateRoomInput) (*CreateRoomResult, error) {
 	id, err := generateRoomID()
 	if err != nil {
@@ -87,18 +94,36 @@ func (m *Manager) Create(in CreateRoomInput) (*CreateRoomResult, error) {
 		name = "Live"
 	}
 
-	r := NewRoom(id, name, in.Password)
+	creatorIP := strings.TrimSpace(in.CreatorIP)
+	r := NewRoom(id, name, in.Password, creatorIP)
 	r.onChange = m.notifyChange
+
+	var replaced *Room
 
 	m.mu.Lock()
 	if _, exists := m.rooms[id]; exists {
 		m.mu.Unlock()
 		return nil, ErrRoomExists
 	}
+	if creatorIP != "" {
+		if oldID, ok := m.byIP[creatorIP]; ok {
+			if old, exists := m.rooms[oldID]; exists {
+				delete(m.rooms, oldID)
+				replaced = old
+			}
+			delete(m.byIP, creatorIP)
+		}
+		m.byIP[creatorIP] = id
+	}
 	m.rooms[id] = r
 	m.mu.Unlock()
 
-	log.Printf("room created id=%s name=%q password_protected=%v", id, name, in.Password != "")
+	if replaced != nil {
+		log.Printf("room replaced by same IP=%s old=%s new=%s", creatorIP, replaced.ID, id)
+		replaced.Close()
+	}
+
+	log.Printf("room created id=%s name=%q password_protected=%v ip=%s", id, name, in.Password != "", creatorIP)
 	m.notifyChange()
 	return &CreateRoomResult{RoomID: id, Name: name}, nil
 }
@@ -151,6 +176,7 @@ func (m *Manager) Delete(id string) {
 	r, ok := m.rooms[id]
 	if ok {
 		delete(m.rooms, id)
+		m.clearIPLocked(r)
 	}
 	m.mu.Unlock()
 	if ok {
@@ -173,10 +199,20 @@ func (m *Manager) RemoveIfEmpty(id string) {
 		return
 	}
 	delete(m.rooms, id)
+	m.clearIPLocked(r)
 	m.mu.Unlock()
 	r.Close()
 	log.Printf("room cleaned (empty) id=%s", id)
 	m.notifyChange()
+}
+
+func (m *Manager) clearIPLocked(r *Room) {
+	if r == nil || r.CreatorIP == "" {
+		return
+	}
+	if cur, ok := m.byIP[r.CreatorIP]; ok && cur == r.ID {
+		delete(m.byIP, r.CreatorIP)
+	}
 }
 
 // ValidRoomID checks alphanumerics and hyphens only.

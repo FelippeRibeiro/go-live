@@ -44,9 +44,10 @@ type Peer struct {
 
 // Room is an SFU room: one publisher, many subscribers, shared local tracks.
 type Room struct {
-	ID       string
-	Name     string
-	Password string
+	ID        string
+	Name      string
+	Password  string
+	CreatorIP string
 
 	mu          sync.RWMutex
 	negotiateMu sync.Mutex
@@ -58,11 +59,12 @@ type Room struct {
 }
 
 // NewRoom constructs an empty room.
-func NewRoom(id, name, password string) *Room {
+func NewRoom(id, name, password, creatorIP string) *Room {
 	return &Room{
 		ID:          id,
 		Name:        name,
 		Password:    password,
+		CreatorIP:   creatorIP,
 		subscribers: make(map[string]*Peer),
 		tracks:      make(map[string]*webrtc.TrackLocalStaticRTP),
 	}
@@ -770,14 +772,18 @@ func (r *Room) Close() {
 	r.tracks = make(map[string]*webrtc.TrackLocalStaticRTP)
 	r.mu.Unlock()
 
-	if pub != nil && pub.PC != nil {
-		_ = pub.PC.Close()
+	ended := map[string]any{
+		"action":  "ended",
+		"message": "room closed",
+	}
+	if pub != nil {
+		_ = pub.Sender.SendJSON(ended)
+		if pub.PC != nil {
+			_ = pub.PC.Close()
+		}
 	}
 	for _, s := range subs {
-		_ = s.Sender.SendJSON(map[string]any{
-			"action":  "ended",
-			"message": "room closed",
-		})
+		_ = s.Sender.SendJSON(ended)
 		if s.PC != nil {
 			_ = s.PC.Close()
 		}
